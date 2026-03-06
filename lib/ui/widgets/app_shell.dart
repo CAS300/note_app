@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:file_picker/file_picker.dart';
@@ -6,6 +7,7 @@ import 'main_editor_panel.dart';
 import '../../providers/workspace_provider.dart';
 import '../../providers/database_provider.dart';
 import '../../providers/settings_provider.dart';
+import '../../providers/app_preferences_provider.dart';
 import '../../core/theme_definitions.dart';
 
 class AppShell extends ConsumerStatefulWidget {
@@ -17,6 +19,40 @@ class AppShell extends ConsumerStatefulWidget {
 
 class _AppShellState extends ConsumerState<AppShell> {
   bool _initialized = false;
+  bool _attemptedAutoLoad = false;
+
+  @override
+  void initState() {
+    super.initState();
+    // Try auto-loading the last workspace on startup.
+    WidgetsBinding.instance.addPostFrameCallback((_) => _tryAutoLoad());
+  }
+
+  Future<void> _tryAutoLoad() async {
+    if (_attemptedAutoLoad) return;
+    _attemptedAutoLoad = true;
+
+    final prefs = ref.read(appPreferencesProvider);
+    final lastPath = prefs.lastWorkspacePath;
+
+    if (lastPath != null && lastPath.isNotEmpty) {
+      final dir = Directory(lastPath);
+      if (await dir.exists()) {
+        await ref.read(workspaceProvider.notifier).loadWorkspace(lastPath);
+        ref.read(settingsProvider.notifier).loadFromManifest();
+        final manifest = ref.read(workspaceProvider).manifest;
+        if (manifest != null && manifest.activeDb != null) {
+          ref.read(databaseProvider.notifier).connect(
+                ref.read(workspaceProvider).path!,
+                manifest.activeDb!,
+              );
+          if (mounted) setState(() => _initialized = true);
+          return;
+        }
+      }
+    }
+    // No valid saved path — user will see the folder picker UI.
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -24,11 +60,10 @@ class _AppShellState extends ConsumerState<AppShell> {
     final hasWorkspace =
         workspaceState.path != null && workspaceState.manifest != null;
 
-    // Auto-connect to active DB once workspace is loaded
+    // Auto-connect to active DB once workspace is loaded (after manual pick).
     if (hasWorkspace && !_initialized) {
       _initialized = true;
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        // Hydrate settings from manifest
         ref.read(settingsProvider.notifier).loadFromManifest();
 
         final manifest = workspaceState.manifest!;
@@ -91,7 +126,8 @@ class _AppShellState extends ConsumerState<AppShell> {
     final picked = await FilePicker.platform.getDirectoryPath();
     if (picked != null) {
       await ref.read(workspaceProvider.notifier).loadWorkspace(picked);
-      // Hydrate settings after loading workspace
+      // Persist this workspace path for next launch.
+      await ref.read(appPreferencesProvider).setLastWorkspacePath(picked);
       ref.read(settingsProvider.notifier).loadFromManifest();
       final manifest = ref.read(workspaceProvider).manifest;
       if (manifest != null && manifest.activeDb != null) {

@@ -4,6 +4,7 @@ import 'package:file_picker/file_picker.dart';
 import '../../providers/workspace_provider.dart';
 import '../../providers/database_provider.dart';
 import '../../providers/settings_provider.dart';
+import '../../providers/app_preferences_provider.dart';
 import '../../models/app_settings.dart';
 import '../../core/theme_definitions.dart';
 
@@ -24,7 +25,7 @@ class SettingsDialog extends ConsumerWidget {
     return Dialog(
       insetPadding: const EdgeInsets.symmetric(horizontal: 80, vertical: 60),
       child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 560, maxHeight: 650),
+        constraints: const BoxConstraints(maxWidth: 560, maxHeight: 700),
         child: ClipRRect(
           borderRadius: BorderRadius.circular(16),
           child: Scaffold(
@@ -64,7 +65,7 @@ class SettingsDialog extends ConsumerWidget {
                     Row(
                       children: [
                         SizedBox(
-                          width: 80,
+                          width: 100,
                           child: Text('Tema',
                               style: theme.textTheme.bodySmall
                                   ?.copyWith(fontWeight: FontWeight.w600)),
@@ -106,7 +107,7 @@ class SettingsDialog extends ConsumerWidget {
                     Row(
                       children: [
                         SizedBox(
-                          width: 80,
+                          width: 100,
                           child: Text('Sıralama',
                               style: theme.textTheme.bodySmall
                                   ?.copyWith(fontWeight: FontWeight.w600)),
@@ -147,6 +148,73 @@ class SettingsDialog extends ConsumerWidget {
                                   }
                                 },
                               ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+
+                const SizedBox(height: 20),
+
+                // ── Editor ──
+                _sectionTitle(theme, colors, 'Editör'),
+                const SizedBox(height: 8),
+                _settingsCard(
+                  colors,
+                  children: [
+                    Row(
+                      children: [
+                        SizedBox(
+                          width: 100,
+                          child: Text('Yazı Boyutu',
+                              style: theme.textTheme.bodySmall
+                                  ?.copyWith(fontWeight: FontWeight.w600)),
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.remove_rounded, size: 18),
+                          onPressed: settings.editorFontSize > 10
+                              ? () => ref
+                                  .read(settingsProvider.notifier)
+                                  .setEditorFontSize(
+                                      settings.editorFontSize - 1)
+                              : null,
+                          visualDensity: VisualDensity.compact,
+                        ),
+                        Container(
+                          width: 50,
+                          alignment: Alignment.center,
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 8, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: colors.sidebarBg,
+                            borderRadius: BorderRadius.circular(6),
+                            border: Border.all(color: colors.border),
+                          ),
+                          child: Text(
+                            '${settings.editorFontSize.round()} pt',
+                            style: theme.textTheme.bodySmall
+                                ?.copyWith(fontWeight: FontWeight.w600),
+                          ),
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.add_rounded, size: 18),
+                          onPressed: settings.editorFontSize < 20
+                              ? () => ref
+                                  .read(settingsProvider.notifier)
+                                  .setEditorFontSize(
+                                      settings.editorFontSize + 1)
+                              : null,
+                          visualDensity: VisualDensity.compact,
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            '(10–20 pt)',
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: colors.textMuted,
+                              fontSize: 11,
                             ),
                           ),
                         ),
@@ -358,7 +426,7 @@ class SettingsDialog extends ConsumerWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         SizedBox(
-          width: 80,
+          width: 100,
           child: Text(label,
               style: theme.textTheme.bodySmall
                   ?.copyWith(fontWeight: FontWeight.w600)),
@@ -379,6 +447,8 @@ class SettingsDialog extends ConsumerWidget {
     final picked = await FilePicker.platform.getDirectoryPath();
     if (picked != null) {
       await ref.read(workspaceProvider.notifier).loadWorkspace(picked);
+      // Persist chosen path for future launches.
+      await ref.read(appPreferencesProvider).setLastWorkspacePath(picked);
       ref.read(settingsProvider.notifier).loadFromManifest();
       final manifest = ref.read(workspaceProvider).manifest;
       if (manifest != null && manifest.activeDb != null) {

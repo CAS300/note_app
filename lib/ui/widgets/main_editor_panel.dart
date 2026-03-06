@@ -1,9 +1,13 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:emoji_picker_flutter/emoji_picker_flutter.dart';
+import 'markdown_text_controller.dart';
 import '../../providers/notes_provider.dart';
 import '../../providers/database_provider.dart';
 import '../../providers/workspace_provider.dart';
+import '../../providers/groups_provider.dart';
+import '../../providers/settings_provider.dart';
 import '../../models/note.dart';
 import '../../core/theme_definitions.dart';
 
@@ -16,15 +20,29 @@ class MainEditorPanel extends ConsumerStatefulWidget {
 
 class _MainEditorPanelState extends ConsumerState<MainEditorPanel> {
   final TextEditingController _titleController = TextEditingController();
-  final TextEditingController _contentController = TextEditingController();
+  late MarkdownTextController _contentController;
+  final FocusNode _contentFocus = FocusNode();
   Timer? _saveTimer;
   int? _loadedNoteId;
+  bool _emojiOpen = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _contentController = MarkdownTextController(
+      baseFontSize: 12.0,
+      textColor: Colors.white,
+      highlightColor: Colors.blue,
+      mutedColor: Colors.grey,
+    );
+  }
 
   @override
   void dispose() {
     _flushSave();
     _titleController.dispose();
     _contentController.dispose();
+    _contentFocus.dispose();
     _saveTimer?.cancel();
     super.dispose();
   }
@@ -38,6 +56,8 @@ class _MainEditorPanelState extends ConsumerState<MainEditorPanel> {
     final workspaceState = ref.watch(workspaceProvider);
     final manifest = workspaceState.manifest;
     final note = notesState.selectedNote;
+    final groupsState = ref.watch(groupsProvider);
+    final settings = ref.watch(settingsProvider);
 
     // Sync controllers when a different note is selected
     if (note != null && note.id != _loadedNoteId) {
@@ -45,23 +65,25 @@ class _MainEditorPanelState extends ConsumerState<MainEditorPanel> {
       _loadedNoteId = note.id;
       _titleController.text = note.title;
       _contentController.text = note.content;
+      _emojiOpen = false;
     } else if (note == null && _loadedNoteId != null) {
       _flushSave();
       _loadedNoteId = null;
       _titleController.clear();
       _contentController.clear();
+      _emojiOpen = false;
     }
+
+    final group = note != null ? groupsState.groupById(note.groupId) : null;
 
     return Column(
       children: [
-        // ── Top Bar ──
         _buildTopBar(theme, colors, manifest, dbState),
         Container(height: 1, color: colors.border),
-
-        // ── Editor ──
         Expanded(
           child: note != null
-              ? _buildEditor(theme, colors, note)
+              ? _buildEditor(
+                  theme, colors, note, group, settings.editorFontSize)
               : _buildEmptyState(theme, colors),
         ),
       ],
@@ -89,9 +111,8 @@ class _MainEditorPanelState extends ConsumerState<MainEditorPanel> {
                   const SizedBox(width: 8),
                   Text(
                     _activeLabel(manifest, dbState),
-                    style: theme.textTheme.labelMedium?.copyWith(
-                      color: colors.textPrimary,
-                    ),
+                    style: theme.textTheme.labelMedium
+                        ?.copyWith(color: colors.textPrimary),
                   ),
                   const SizedBox(width: 4),
                   Icon(Icons.keyboard_arrow_down_rounded,
@@ -147,43 +168,90 @@ class _MainEditorPanelState extends ConsumerState<MainEditorPanel> {
     return dbState.activeDbName!;
   }
 
-  Widget _buildEditor(ThemeData theme, NoteAppColors colors, Note note) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 24),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // ── Title Field ──
-          TextField(
-            controller: _titleController,
-            onChanged: (_) => _scheduleSave(),
-            style: theme.textTheme.headlineMedium?.copyWith(fontSize: 24),
-            decoration: const InputDecoration(
-              border: InputBorder.none,
-              enabledBorder: InputBorder.none,
-              focusedBorder: InputBorder.none,
-              fillColor: Colors.transparent,
-              hintText: 'Not başlığı…',
-              contentPadding: EdgeInsets.zero,
-            ),
-            maxLines: 1,
-          ),
-          const SizedBox(height: 4),
-          Text(
-            _formatDate(note.updatedAt),
-            style: theme.textTheme.bodySmall,
-          ),
-          const SizedBox(height: 16),
-          Container(height: 1, color: colors.border),
-          const SizedBox(height: 16),
+  Widget _buildEditor(ThemeData theme, NoteAppColors colors, Note note,
+      dynamic group, double fontSize) {
+    // Sync controller formatting properties with current theme/settings
+    _contentController.baseFontSize = fontSize;
+    _contentController.textColor = colors.textSecondary;
+    _contentController.highlightColor = colors.primary;
+    _contentController.mutedColor = colors.textMuted;
 
-          // ── Content Field ──
-          Expanded(
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // ── Title & Group chip ──
+        Padding(
+          padding: const EdgeInsets.fromLTRB(40, 24, 40, 0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: _titleController,
+                      onChanged: (_) => _scheduleSave(),
+                      style: theme.textTheme.headlineMedium
+                          ?.copyWith(fontSize: 24),
+                      decoration: const InputDecoration(
+                        border: InputBorder.none,
+                        enabledBorder: InputBorder.none,
+                        focusedBorder: InputBorder.none,
+                        fillColor: Colors.transparent,
+                        hintText: 'Not başlığı…',
+                        contentPadding: EdgeInsets.zero,
+                      ),
+                      maxLines: 1,
+                    ),
+                  ),
+                  if (group != null) _buildGroupChip(colors, group),
+                ],
+              ),
+              const SizedBox(height: 4),
+              Text(_formatDate(note.updatedAt),
+                  style: theme.textTheme.bodySmall),
+            ],
+          ),
+        ),
+
+        const SizedBox(height: 8),
+
+        // ── Toolbar ──
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 40),
+          child: _buildToolbar(theme, colors),
+        ),
+
+        const SizedBox(height: 8),
+
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 40),
+          child: Container(height: 1, color: colors.border),
+        ),
+
+        const SizedBox(height: 8),
+
+        // ── Content Field ──
+        Expanded(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 40),
             child: TextField(
               controller: _contentController,
+              focusNode: _contentFocus,
               onChanged: (_) => _scheduleSave(),
-              style: theme.textTheme.bodyMedium
-                  ?.copyWith(fontSize: 15, height: 1.7),
+              style: TextStyle(
+                fontFamily: 'Segoe UI',
+                fontFamilyFallback: const [
+                  'Inter',
+                  'Roboto',
+                  'Helvetica Neue',
+                  'Arial',
+                  'sans-serif'
+                ],
+                fontSize: fontSize,
+                height: 1.6,
+                color: colors.textSecondary,
+              ),
               decoration: const InputDecoration(
                 border: InputBorder.none,
                 enabledBorder: InputBorder.none,
@@ -197,9 +265,250 @@ class _MainEditorPanelState extends ConsumerState<MainEditorPanel> {
               textAlignVertical: TextAlignVertical.top,
             ),
           ),
+        ),
+
+        // ── Emoji Picker Panel ──
+        if (_emojiOpen)
+          SizedBox(
+            height: 260,
+            child: EmojiPicker(
+              onEmojiSelected: (category, emoji) {
+                _insertAtCursor(emoji.emoji);
+                _scheduleSave();
+              },
+              config: Config(
+                height: 260,
+                emojiViewConfig: EmojiViewConfig(
+                  columns: 8,
+                  emojiSizeMax: 24,
+                  backgroundColor: colors.card,
+                ),
+                categoryViewConfig: CategoryViewConfig(
+                  backgroundColor: colors.card,
+                  indicatorColor: colors.primary,
+                  iconColorSelected: colors.primary,
+                  iconColor: colors.textMuted,
+                ),
+                searchViewConfig: SearchViewConfig(
+                  backgroundColor: colors.card,
+                  hintText: 'Emoji ara…',
+                ),
+                bottomActionBarConfig: const BottomActionBarConfig(
+                  enabled: false,
+                ),
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+
+  Widget _buildGroupChip(NoteAppColors colors, dynamic group) {
+    final hex = (group.color as String).replaceFirst('#', '');
+    final gc = Color(int.parse('FF$hex', radix: 16));
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: gc.withAlpha(40),
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: gc.withAlpha(80)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 7,
+            height: 7,
+            decoration: BoxDecoration(color: gc, shape: BoxShape.circle),
+          ),
+          const SizedBox(width: 6),
+          Text(group.name as String,
+              style: TextStyle(
+                  fontSize: 11, color: gc, fontWeight: FontWeight.w600)),
         ],
       ),
     );
+  }
+
+  Widget _buildToolbar(ThemeData theme, NoteAppColors colors) {
+    return Container(
+      height: 34,
+      decoration: BoxDecoration(
+        color: colors.card,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: colors.border),
+      ),
+      child: Row(
+        children: [
+          _toolBtn(colors, Icons.emoji_emotions_outlined, 'Emoji', () {
+            setState(() => _emojiOpen = !_emojiOpen);
+          }),
+          _divider(colors),
+          _toolBtn(colors, Icons.looks_one_outlined, 'H1',
+              () => _applyLinePrefix('# ')),
+          _toolBtn(colors, Icons.looks_two_outlined, 'H2',
+              () => _applyLinePrefix('## ')),
+          _toolBtn(colors, Icons.looks_3_outlined, 'H3',
+              () => _applyLinePrefix('### ')),
+          _divider(colors),
+          _toolBtn(
+              colors, Icons.check_box_outlined, 'Checkbox', _toggleCheckbox),
+          _toolBtn(colors, Icons.format_bold_rounded, 'Kalın', _wrapBold),
+        ],
+      ),
+    );
+  }
+
+  Widget _toolBtn(
+      NoteAppColors colors, IconData icon, String tooltip, VoidCallback onTap) {
+    return Tooltip(
+      message: tooltip,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(6),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 8),
+          child: Icon(icon, size: 18, color: colors.textSecondary),
+        ),
+      ),
+    );
+  }
+
+  Widget _divider(NoteAppColors colors) {
+    return Container(width: 1, height: 18, color: colors.border);
+  }
+
+  // ══════════════════════════════════════════════
+  //  ROBUST TEXT MANIPULATION HELPERS
+  // ══════════════════════════════════════════════
+
+  /// Regex that matches any known prefix at the start of a line.
+  static final _knownPrefixRe = RegExp(r'^(#{1,3}\s|- \[[ x]\] )');
+
+  /// Insert text at the current cursor position.
+  void _insertAtCursor(String text) {
+    final sel = _contentController.selection;
+    final cur = sel.isValid ? sel.baseOffset : _contentController.text.length;
+    final before = _contentController.text.substring(0, cur);
+    final after = _contentController.text.substring(cur);
+    _contentController.text = '$before$text$after';
+    _contentController.selection =
+        TextSelection.collapsed(offset: cur + text.length);
+    _contentFocus.requestFocus();
+  }
+
+  /// Returns (lineStart, lineEnd) for the line where the cursor currently sits.
+  (int, int) _currentLineRange() {
+    final text = _contentController.text;
+    final sel = _contentController.selection;
+    final cursor = sel.isValid ? sel.baseOffset : text.length;
+
+    int lineStart = text.lastIndexOf('\n', cursor > 0 ? cursor - 1 : 0);
+    lineStart = lineStart == -1 ? 0 : lineStart + 1;
+
+    int lineEnd = text.indexOf('\n', cursor);
+    if (lineEnd == -1) lineEnd = text.length;
+
+    return (lineStart, lineEnd);
+  }
+
+  /// Strips all known prefixes (headings, checkboxes) from a line.
+  String _stripKnownPrefixes(String line) {
+    return line.replaceFirst(_knownPrefixRe, '');
+  }
+
+  /// Apply a heading prefix (e.g. "# ", "## ", "### ") to the current line.
+  /// Removes any existing heading or checkbox prefix first.
+  /// Toggling: if the line already has this exact prefix, just remove it.
+  void _applyLinePrefix(String prefix) {
+    final text = _contentController.text;
+    final (lineStart, lineEnd) = _currentLineRange();
+    final line = text.substring(lineStart, lineEnd);
+
+    String newLine;
+    if (line.startsWith(prefix)) {
+      // Toggle off — remove the prefix.
+      newLine = line.substring(prefix.length);
+    } else {
+      // Strip any existing prefix, then apply the new one.
+      newLine = '$prefix${_stripKnownPrefixes(line)}';
+    }
+
+    final before = text.substring(0, lineStart);
+    final after = text.substring(lineEnd);
+    _contentController.text = '$before$newLine$after';
+
+    // Place cursor at end of the new line.
+    final newCursor = lineStart + newLine.length;
+    _contentController.selection = TextSelection.collapsed(
+      offset: newCursor.clamp(0, _contentController.text.length),
+    );
+    _contentFocus.requestFocus();
+    _scheduleSave();
+  }
+
+  /// Toggle checkbox prefix on the current line.
+  /// Removes heading prefixes first. Toggles between adding/removing "- [ ] ".
+  void _toggleCheckbox() {
+    final text = _contentController.text;
+    final (lineStart, lineEnd) = _currentLineRange();
+    final line = text.substring(lineStart, lineEnd);
+
+    String newLine;
+    if (line.startsWith('- [ ] ')) {
+      // Remove unchecked checkbox.
+      newLine = line.substring(6);
+    } else if (line.startsWith('- [x] ')) {
+      // Remove checked checkbox.
+      newLine = line.substring(6);
+    } else {
+      // Strip any prefix and add checkbox.
+      newLine = '- [ ] ${_stripKnownPrefixes(line)}';
+    }
+
+    final before = text.substring(0, lineStart);
+    final after = text.substring(lineEnd);
+    _contentController.text = '$before$newLine$after';
+
+    final newCursor = lineStart + newLine.length;
+    _contentController.selection = TextSelection.collapsed(
+      offset: newCursor.clamp(0, _contentController.text.length),
+    );
+    _contentFocus.requestFocus();
+    _scheduleSave();
+  }
+
+  /// Wrap selected text with bold markers, or insert empty bold markers.
+  void _wrapBold() {
+    final text = _contentController.text;
+    final sel = _contentController.selection;
+
+    if (!sel.isValid || sel.isCollapsed) {
+      // No selection — insert **** and place cursor in the middle.
+      final cursor = sel.isValid ? sel.baseOffset : text.length;
+      final before = text.substring(0, cursor);
+      final after = text.substring(cursor);
+      _contentController.text = '$before****$after';
+      _contentController.selection =
+          TextSelection.collapsed(offset: cursor + 2);
+      _contentFocus.requestFocus();
+      _scheduleSave();
+      return;
+    }
+
+    // Wrap selected text with **.
+    final selected = text.substring(sel.start, sel.end);
+    final replacement = '**$selected**';
+    final before = text.substring(0, sel.start);
+    final after = text.substring(sel.end);
+    _contentController.text = '$before$replacement$after';
+    // Select the wrapped text (including markers) for visibility.
+    _contentController.selection = TextSelection(
+      baseOffset: sel.start,
+      extentOffset: sel.start + replacement.length,
+    );
+    _contentFocus.requestFocus();
+    _scheduleSave();
   }
 
   Widget _buildEmptyState(ThemeData theme, NoteAppColors colors) {
@@ -209,15 +518,11 @@ class _MainEditorPanelState extends ConsumerState<MainEditorPanel> {
         children: [
           Icon(Icons.edit_note_rounded, size: 56, color: colors.textMuted),
           const SizedBox(height: 16),
-          Text(
-            'Not seçilmedi',
-            style: theme.textTheme.headlineMedium?.copyWith(fontSize: 18),
-          ),
+          Text('Not seçilmedi',
+              style: theme.textTheme.headlineMedium?.copyWith(fontSize: 18)),
           const SizedBox(height: 6),
-          Text(
-            'Sol panelden bir not seçin veya yeni bir not oluşturun.',
-            style: theme.textTheme.bodyMedium,
-          ),
+          Text('Sol panelden bir not seçin veya yeni bir not oluşturun.',
+              style: theme.textTheme.bodyMedium),
         ],
       ),
     );

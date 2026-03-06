@@ -4,6 +4,7 @@ import '../models/app_settings.dart';
 import '../data/repositories/notes_repository.dart';
 import 'database_provider.dart';
 import 'settings_provider.dart';
+import 'groups_provider.dart';
 
 /// State holding the notes list and currently selected note.
 class NotesState {
@@ -34,10 +35,11 @@ class NotesState {
 class NotesNotifier extends StateNotifier<NotesState> {
   NotesRepository? _repo;
   AppSortMode _sortMode = AppSortMode.alphabetical;
+  int? _groupFilter;
+  bool _filterByGroup = false;
 
   NotesNotifier() : super(NotesState());
 
-  /// Called when the database connection changes.
   void attach(NotesRepository repo) {
     _repo = repo;
     reload();
@@ -48,15 +50,24 @@ class NotesNotifier extends StateNotifier<NotesState> {
     state = NotesState();
   }
 
-  /// Update the sort mode and reload.
   void setSortMode(AppSortMode mode) {
     _sortMode = mode;
     reload();
   }
 
+  void setGroupFilter(int? groupId) {
+    _groupFilter = groupId;
+    _filterByGroup = groupId != null;
+    reload();
+  }
+
   void reload() {
     if (_repo == null) return;
-    final all = _repo!.getAll(sortMode: _sortMode);
+    final all = _repo!.getAll(
+      sortMode: _sortMode,
+      groupId: _groupFilter,
+      filterByGroup: _filterByGroup,
+    );
     final stillExists = state.selectedNoteId != null &&
         all.any((n) => n.id == state.selectedNoteId);
     state = NotesState(
@@ -71,7 +82,7 @@ class NotesNotifier extends StateNotifier<NotesState> {
 
   void createNote() {
     if (_repo == null) return;
-    final note = _repo!.create();
+    final note = _repo!.create(groupId: _filterByGroup ? _groupFilter : null);
     reload();
     state = state.copyWith(selectedNoteId: note.id);
   }
@@ -105,10 +116,15 @@ class NotesNotifier extends StateNotifier<NotesState> {
     state = state.copyWith(selectedNoteId: dup.id);
   }
 
-  /// Reorder notes by drag-and-drop. [orderedIds] is the new order of note ids.
   void reorder(List<int> orderedIds) {
     if (_repo == null) return;
     _repo!.reorder(orderedIds);
+    reload();
+  }
+
+  void toggleShortcut(int id) {
+    if (_repo == null) return;
+    _repo!.toggleShortcut(id);
     reload();
   }
 }
@@ -121,13 +137,19 @@ final notesProvider = StateNotifierProvider<NotesNotifier, NotesState>((ref) {
     notifier.setSortMode(next.sortMode);
   });
 
-  // Listen to database connection changes and attach / detach automatically.
+  // Sync group filter.
+  ref.listen<GroupsState>(groupsProvider, (prev, next) {
+    notifier.setGroupFilter(next.activeGroupId);
+  });
+
+  // Listen to database connection changes.
   ref.listen<DatabaseState>(databaseProvider, (prev, next) {
     if (next.isConnected && next.notesService != null) {
       notifier.attach(NotesRepository(next.notesService!));
-      // Also apply current sort mode.
       final settings = ref.read(settingsProvider);
       notifier.setSortMode(settings.sortMode);
+      final groups = ref.read(groupsProvider);
+      notifier.setGroupFilter(groups.activeGroupId);
     } else {
       notifier.detach();
     }
@@ -139,6 +161,8 @@ final notesProvider = StateNotifierProvider<NotesNotifier, NotesState>((ref) {
     notifier.attach(NotesRepository(dbState.notesService!));
     final settings = ref.read(settingsProvider);
     notifier.setSortMode(settings.sortMode);
+    final groups = ref.read(groupsProvider);
+    notifier.setGroupFilter(groups.activeGroupId);
   }
 
   return notifier;

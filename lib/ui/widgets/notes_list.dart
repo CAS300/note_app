@@ -1,18 +1,23 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../providers/notes_provider.dart';
+import '../../providers/groups_provider.dart';
 import '../../models/note.dart';
+import '../../models/group.dart';
 import '../../models/app_settings.dart';
 import '../../core/theme_definitions.dart';
 
 class NotesList extends ConsumerWidget {
   final String searchQuery;
   final AppSortMode sortMode;
+  final List<Group> groups;
 
   const NotesList({
     super.key,
     this.searchQuery = '',
     this.sortMode = AppSortMode.alphabetical,
+    this.groups = const [],
   });
 
   @override
@@ -37,15 +42,22 @@ class NotesList extends ConsumerWidget {
       itemBuilder: (context, index) {
         final note = notes[index];
         final isSelected = note.id == notesState.selectedNoteId;
+        final group = _groupFor(note);
         return _NoteItem(
           key: ValueKey(note.id),
           note: note,
+          group: group,
           isSelected: isSelected,
-          onTap: () => ref.read(notesProvider.notifier).selectNote(note.id),
+          onTap: () => _handleTap(context, ref, note),
           onDelete: () => _confirmDelete(context, ref, note),
           onRename: () => _showRenameDialog(context, ref, note),
           onDuplicate: () =>
               ref.read(notesProvider.notifier).duplicateNote(note.id!),
+          onGroupAssign: () => _showGroupAssignDialog(context, ref, note),
+          onEdit: () => ref.read(notesProvider.notifier).selectNote(note.id),
+          onToggleShortcut: () {
+            ref.read(notesProvider.notifier).toggleShortcut(note.id!);
+          },
         );
       },
     );
@@ -58,17 +70,10 @@ class NotesList extends ConsumerWidget {
       buildDefaultDragHandles: false,
       itemCount: notes.length,
       proxyDecorator: (child, index, animation) {
-        return AnimatedBuilder(
-          animation: animation,
-          builder: (context, child) {
-            final colors = Theme.of(context).extension<NoteAppColors>();
-            return Material(
-              color: colors?.card ?? Colors.grey[900],
-              borderRadius: BorderRadius.circular(8),
-              elevation: 4,
-              child: child,
-            );
-          },
+        return Material(
+          color: Colors.grey[900],
+          borderRadius: BorderRadius.circular(8),
+          elevation: 4,
           child: child,
         );
       },
@@ -82,20 +87,53 @@ class NotesList extends ConsumerWidget {
       itemBuilder: (context, index) {
         final note = notes[index];
         final isSelected = note.id == notesState.selectedNoteId;
+        final group = _groupFor(note);
         return _NoteItem(
           key: ValueKey(note.id),
           note: note,
+          group: group,
           isSelected: isSelected,
-          onTap: () => ref.read(notesProvider.notifier).selectNote(note.id),
+          onTap: () => _handleTap(context, ref, note),
           onDelete: () => _confirmDelete(context, ref, note),
           onRename: () => _showRenameDialog(context, ref, note),
           onDuplicate: () =>
               ref.read(notesProvider.notifier).duplicateNote(note.id!),
+          onGroupAssign: () => _showGroupAssignDialog(context, ref, note),
+          onEdit: () => ref.read(notesProvider.notifier).selectNote(note.id),
+          onToggleShortcut: () {
+            ref.read(notesProvider.notifier).toggleShortcut(note.id!);
+          },
           draggable: true,
           dragIndex: index,
         );
       },
     );
+  }
+
+  /// Central tap handler: shortcut notes copy to clipboard, normal notes select.
+  void _handleTap(BuildContext context, WidgetRef ref, Note note) {
+    if (note.isShortcut) {
+      Clipboard.setData(ClipboardData(text: note.content));
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Kopyalandı'),
+          duration: Duration(seconds: 1),
+          behavior: SnackBarBehavior.floating,
+          width: 140,
+        ),
+      );
+    } else {
+      ref.read(notesProvider.notifier).selectNote(note.id);
+    }
+  }
+
+  Group? _groupFor(Note note) {
+    if (note.groupId == null) return null;
+    try {
+      return groups.firstWhere((g) => g.id == note.groupId);
+    } catch (_) {
+      return null;
+    }
   }
 
   List<Note> _filteredNotes(List<Note> notes) {
@@ -126,11 +164,9 @@ class NotesList extends ConsumerWidget {
             ),
             if (searchQuery.isEmpty) ...[
               const SizedBox(height: 4),
-              Text(
-                '"Yeni Not" ile başlayın',
-                style: theme.textTheme.bodySmall,
-                textAlign: TextAlign.center,
-              ),
+              Text('"Yeni Not" ile başlayın',
+                  style: theme.textTheme.bodySmall,
+                  textAlign: TextAlign.center),
             ],
           ],
         ),
@@ -148,9 +184,8 @@ class NotesList extends ConsumerWidget {
           content: Text('"${note.title}" silinsin mi?'),
           actions: [
             TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: const Text('İptal'),
-            ),
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('İptal')),
             TextButton(
               onPressed: () {
                 ref.read(notesProvider.notifier).deleteNote(note.id!);
@@ -172,18 +207,17 @@ class NotesList extends ConsumerWidget {
       builder: (ctx) => AlertDialog(
         title: const Text('Notu Yeniden Adlandır'),
         content: TextField(
-          controller: controller,
-          autofocus: true,
-          decoration: const InputDecoration(hintText: 'Yeni başlık'),
-        ),
+            controller: controller,
+            autofocus: true,
+            decoration: const InputDecoration(hintText: 'Yeni başlık')),
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(ctx), child: const Text('İptal')),
           TextButton(
             onPressed: () {
-              final newTitle = controller.text.trim();
-              if (newTitle.isNotEmpty) {
-                ref.read(notesProvider.notifier).renameNote(note.id!, newTitle);
+              final t = controller.text.trim();
+              if (t.isNotEmpty) {
+                ref.read(notesProvider.notifier).renameNote(note.id!, t);
               }
               Navigator.pop(ctx);
             },
@@ -193,50 +227,112 @@ class NotesList extends ConsumerWidget {
       ),
     );
   }
+
+  void _showGroupAssignDialog(BuildContext context, WidgetRef ref, Note note) {
+    final groupsState = ref.read(groupsProvider);
+    showDialog(
+      context: context,
+      builder: (ctx) {
+        final colors = Theme.of(ctx).extension<NoteAppColors>()!;
+        return AlertDialog(
+          title: const Text('Gruba Ata'),
+          content: SizedBox(
+            width: 260,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (note.groupId != null)
+                  ListTile(
+                    dense: true,
+                    leading: Icon(Icons.close_rounded,
+                        size: 16, color: colors.deleteColor),
+                    title: Text('Gruptan Çıkar',
+                        style:
+                            TextStyle(fontSize: 13, color: colors.deleteColor)),
+                    onTap: () {
+                      ref
+                          .read(groupsProvider.notifier)
+                          .removeNoteFromGroup(note.id!);
+                      ref.read(notesProvider.notifier).reload();
+                      Navigator.pop(ctx);
+                    },
+                  ),
+                ...groupsState.groups.map((g) {
+                  final isActive = note.groupId == g.id;
+                  return ListTile(
+                    dense: true,
+                    leading: Container(
+                      width: 12,
+                      height: 12,
+                      decoration: BoxDecoration(
+                        color: _parseColor(g.color),
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                    title: Text(g.name, style: const TextStyle(fontSize: 13)),
+                    trailing: isActive
+                        ? Icon(Icons.check_rounded,
+                            size: 16, color: colors.primary)
+                        : null,
+                    onTap: () {
+                      ref
+                          .read(groupsProvider.notifier)
+                          .assignNoteToGroup(note.id!, g.id!);
+                      ref.read(notesProvider.notifier).reload();
+                      Navigator.pop(ctx);
+                    },
+                  );
+                }),
+                if (groupsState.groups.isEmpty)
+                  Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Text('Henüz grup yok. Kenar çubuğundan oluşturun.',
+                        style:
+                            TextStyle(fontSize: 12, color: colors.textMuted)),
+                  ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  static Color _parseColor(String hex) {
+    final h = hex.replaceFirst('#', '');
+    return Color(int.parse('FF$h', radix: 16));
+  }
 }
 
 // ─────────────────────────────────────────────
-//  AnimatedBuilder helper (for proxy decorator)
+//  Note Item with group color accent, shortcut badge, context menu
 // ─────────────────────────────────────────────
-
-class AnimatedBuilder extends StatelessWidget {
-  final Animation<double> animation;
-  final Widget Function(BuildContext, Widget?) builder;
-  final Widget? child;
-
-  const AnimatedBuilder({
-    super.key,
-    required this.animation,
-    required this.builder,
-    this.child,
-  });
-
-  @override
-  Widget build(BuildContext context) => builder(context, child);
-}
-
-// ─────────────────────────────────────────────
-//  Note Item with context menu
-// ─────────────────────────────────────────────
-
 class _NoteItem extends StatefulWidget {
   final Note note;
+  final Group? group;
   final bool isSelected;
   final VoidCallback onTap;
   final VoidCallback onDelete;
   final VoidCallback onRename;
   final VoidCallback onDuplicate;
+  final VoidCallback onGroupAssign;
+  final VoidCallback onEdit;
+  final VoidCallback onToggleShortcut;
   final bool draggable;
   final int? dragIndex;
 
   const _NoteItem({
     super.key,
     required this.note,
+    this.group,
     required this.isSelected,
     required this.onTap,
     required this.onDelete,
     required this.onRename,
     required this.onDuplicate,
+    required this.onGroupAssign,
+    required this.onEdit,
+    required this.onToggleShortcut,
     this.draggable = false,
     this.dragIndex,
   });
@@ -248,6 +344,12 @@ class _NoteItem extends StatefulWidget {
 class _NoteItemState extends State<_NoteItem> {
   bool _hovering = false;
 
+  Color? get _groupColor {
+    if (widget.group == null) return null;
+    final h = widget.group!.color.replaceFirst('#', '');
+    return Color(int.parse('FF$h', radix: 16));
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -255,15 +357,15 @@ class _NoteItemState extends State<_NoteItem> {
     final updatedAt =
         DateTime.fromMillisecondsSinceEpoch(widget.note.updatedAt * 1000);
     final timeStr = _formatTime(updatedAt);
+    final gc = _groupColor;
 
-    Widget item = Padding(
+    return Padding(
       padding: const EdgeInsets.symmetric(vertical: 1),
       child: MouseRegion(
         onEnter: (_) => setState(() => _hovering = true),
         onExit: (_) => setState(() => _hovering = false),
         child: GestureDetector(
-          onSecondaryTapUp: (details) =>
-              _showContextMenu(context, details.globalPosition),
+          onSecondaryTapUp: (d) => _showContextMenu(context, d.globalPosition),
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 120),
             decoration: BoxDecoration(
@@ -274,135 +376,191 @@ class _NoteItemState extends State<_NoteItem> {
                       : Colors.transparent,
               borderRadius: BorderRadius.circular(8),
               border: widget.isSelected
-                  ? Border.all(color: colors.primary, width: 1)
+                  ? Border.all(color: gc ?? colors.primary, width: 1)
                   : null,
             ),
             child: InkWell(
               borderRadius: BorderRadius.circular(8),
               onTap: widget.onTap,
-              child: Padding(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                child: Row(
-                  children: [
-                    if (widget.draggable)
-                      ReorderableDragStartListener(
-                        index: widget.dragIndex!,
-                        child: MouseRegion(
-                          cursor: SystemMouseCursors.grab,
-                          child: Padding(
-                            padding: const EdgeInsets.only(right: 8),
-                            child: Icon(Icons.drag_indicator_rounded,
-                                size: 16, color: colors.textMuted),
-                          ),
+              child: Row(
+                children: [
+                  // ── Group accent bar ──
+                  if (gc != null)
+                    Container(
+                      width: 3,
+                      height: 44,
+                      margin: const EdgeInsets.only(left: 2),
+                      decoration: BoxDecoration(
+                        color: gc,
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+                  if (widget.draggable)
+                    ReorderableDragStartListener(
+                      index: widget.dragIndex!,
+                      child: MouseRegion(
+                        cursor: SystemMouseCursors.grab,
+                        child: Padding(
+                          padding: EdgeInsets.only(
+                              left: gc != null ? 4 : 8, right: 4),
+                          child: Icon(Icons.drag_indicator_rounded,
+                              size: 16, color: colors.textMuted),
                         ),
                       ),
-                    Expanded(
+                    ),
+                  Expanded(
+                    child: Padding(
+                      padding: EdgeInsets.only(
+                        left: widget.draggable ? 0 : (gc != null ? 8 : 12),
+                        right: 12,
+                        top: 10,
+                        bottom: 10,
+                      ),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(
-                            widget.note.title.isEmpty
-                                ? 'Başlıksız Not'
-                                : widget.note.title,
-                            style: theme.textTheme.titleMedium?.copyWith(
-                              fontSize: 14,
-                              fontWeight: widget.isSelected
-                                  ? FontWeight.w600
-                                  : FontWeight.w400,
-                            ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
+                          Row(
+                            children: [
+                              // ── Shortcut badge ──
+                              if (widget.note.isShortcut)
+                                Padding(
+                                  padding: const EdgeInsets.only(right: 5),
+                                  child: Icon(Icons.bolt_rounded,
+                                      size: 14, color: colors.highlight),
+                                ),
+                              Expanded(
+                                child: Text(
+                                  widget.note.title.isEmpty
+                                      ? 'Başlıksız Not'
+                                      : widget.note.title,
+                                  style: theme.textTheme.titleMedium?.copyWith(
+                                    fontSize: 14,
+                                    fontWeight: widget.isSelected
+                                        ? FontWeight.w600
+                                        : FontWeight.w400,
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                              if (gc != null && widget.group != null)
+                                Container(
+                                  margin: const EdgeInsets.only(left: 6),
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 5, vertical: 1),
+                                  decoration: BoxDecoration(
+                                    color: gc.withAlpha(40),
+                                    borderRadius: BorderRadius.circular(4),
+                                  ),
+                                  child: Text(
+                                    widget.group!.name,
+                                    style: TextStyle(
+                                        fontSize: 9,
+                                        color: gc,
+                                        fontWeight: FontWeight.w500),
+                                  ),
+                                ),
+                            ],
                           ),
                           const SizedBox(height: 2),
-                          Text(
-                            timeStr,
-                            style: theme.textTheme.bodySmall
-                                ?.copyWith(fontSize: 11),
-                          ),
+                          Text(timeStr,
+                              style: theme.textTheme.bodySmall
+                                  ?.copyWith(fontSize: 11)),
                         ],
                       ),
                     ),
-                    if (_hovering || widget.isSelected)
-                      InkWell(
-                        borderRadius: BorderRadius.circular(6),
-                        onTap: widget.onDelete,
-                        child: Padding(
-                          padding: const EdgeInsets.all(4.0),
-                          child: Icon(
-                            Icons.delete_outline_rounded,
-                            size: 16,
-                            color: colors.textMuted,
-                          ),
-                        ),
+                  ),
+                  if (_hovering || widget.isSelected)
+                    InkWell(
+                      borderRadius: BorderRadius.circular(6),
+                      onTap: widget.onDelete,
+                      child: Padding(
+                        padding: const EdgeInsets.all(4.0),
+                        child: Icon(Icons.delete_outline_rounded,
+                            size: 16, color: colors.textMuted),
                       ),
-                  ],
-                ),
+                    ),
+                  const SizedBox(width: 4),
+                ],
               ),
             ),
           ),
         ),
       ),
     );
-
-    return item;
   }
 
   void _showContextMenu(BuildContext context, Offset position) {
     final colors = Theme.of(context).extension<NoteAppColors>()!;
+    final isShortcut = widget.note.isShortcut;
     showMenu<String>(
       context: context,
       position: RelativeRect.fromLTRB(
           position.dx, position.dy, position.dx + 1, position.dy + 1),
       items: [
-        PopupMenuItem<String>(
-          value: 'rename',
-          child: Row(
-            children: [
+        PopupMenuItem(
+            value: 'edit',
+            child: Row(children: [
+              Icon(Icons.edit_note_rounded,
+                  size: 16, color: colors.textSecondary),
+              const SizedBox(width: 10),
+              const Text('Düzenle'),
+            ])),
+        PopupMenuItem(
+          value: 'shortcut',
+          child: Row(children: [
+            Icon(
+              isShortcut ? Icons.bolt_outlined : Icons.bolt_rounded,
+              size: 16,
+              color: colors.textSecondary,
+            ),
+            const SizedBox(width: 10),
+            Text(isShortcut ? 'Kısayoldan Çıkar' : 'Kısayol Olarak Ayarla'),
+          ]),
+        ),
+        const PopupMenuDivider(),
+        PopupMenuItem(
+            value: 'rename',
+            child: Row(children: [
               Icon(Icons.edit_rounded, size: 16, color: colors.textSecondary),
               const SizedBox(width: 10),
               const Text('Yeniden Adlandır'),
-            ],
-          ),
-        ),
-        PopupMenuItem<String>(
-          value: 'duplicate',
-          child: Row(
-            children: [
+            ])),
+        PopupMenuItem(
+            value: 'duplicate',
+            child: Row(children: [
               Icon(Icons.copy_rounded, size: 16, color: colors.textSecondary),
               const SizedBox(width: 10),
               const Text('Kopyala'),
-            ],
-          ),
-        ),
+            ])),
         const PopupMenuDivider(),
-        PopupMenuItem<String>(
-          value: 'group',
-          child: Row(
-            children: [
+        PopupMenuItem(
+            value: 'group',
+            child: Row(children: [
               Icon(Icons.folder_outlined,
                   size: 16, color: colors.textSecondary),
               const SizedBox(width: 10),
-              const Text('Gruba Ekle'),
-            ],
-          ),
-        ),
+              const Text('Gruba Ata'),
+            ])),
         const PopupMenuDivider(),
-        PopupMenuItem<String>(
-          value: 'delete',
-          child: Row(
-            children: [
+        PopupMenuItem(
+            value: 'delete',
+            child: Row(children: [
               Icon(Icons.delete_outline_rounded,
                   size: 16, color: colors.deleteColor),
               const SizedBox(width: 10),
               Text('Sil', style: TextStyle(color: colors.deleteColor)),
-            ],
-          ),
-        ),
+            ])),
       ],
     ).then((value) {
       if (value == null || !context.mounted) return;
       switch (value) {
+        case 'edit':
+          widget.onEdit();
+          break;
+        case 'shortcut':
+          widget.onToggleShortcut();
+          break;
         case 'rename':
           widget.onRename();
           break;
@@ -410,7 +568,7 @@ class _NoteItemState extends State<_NoteItem> {
           widget.onDuplicate();
           break;
         case 'group':
-          _showGroupPlaceholder(context);
+          widget.onGroupAssign();
           break;
         case 'delete':
           widget.onDelete();
@@ -419,30 +577,13 @@ class _NoteItemState extends State<_NoteItem> {
     });
   }
 
-  void _showGroupPlaceholder(BuildContext context) {
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Gruba Ekle'),
-        content: const Text(
-            'Grup sistemi henüz uygulanmadı. Bu özellik gelecekte eklenecek.'),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(ctx), child: const Text('Tamam')),
-        ],
-      ),
-    );
-  }
-
   String _formatTime(DateTime dt) {
     final now = DateTime.now();
     final diff = now.difference(dt);
-
     if (diff.inMinutes < 1) return 'az önce';
     if (diff.inMinutes < 60) return '${diff.inMinutes} dk önce';
     if (diff.inHours < 24) return '${diff.inHours} sa önce';
     if (diff.inDays < 7) return '${diff.inDays} gün önce';
-
     return '${dt.day.toString().padLeft(2, '0')}.${dt.month.toString().padLeft(2, '0')}.${dt.year}';
   }
 }

@@ -26,6 +26,11 @@ class SettingsNotifier extends StateNotifier<AppSettings> {
     await _persist();
   }
 
+  Future<void> setEditorFontSize(double size) async {
+    state = state.copyWith(editorFontSize: size.clamp(10.0, 20.0));
+    await _persist();
+  }
+
   /// Persist current settings back into the workspace manifest.
   Future<void> _persist() async {
     final ws = _ref.read(workspaceProvider);

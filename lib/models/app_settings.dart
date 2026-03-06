@@ -15,16 +15,19 @@ enum AppSortMode {
 class AppSettings {
   final AppThemeId themeId;
   final AppSortMode sortMode;
+  final double editorFontSize;
 
   const AppSettings({
     this.themeId = AppThemeId.defaultTheme,
     this.sortMode = AppSortMode.alphabetical,
+    this.editorFontSize = 12.0,
   });
 
   factory AppSettings.fromMap(Map<String, dynamic> map) {
     return AppSettings(
       themeId: _parseTheme(map['theme'] as String?),
       sortMode: _parseSortMode(map['sort_mode'] as String?),
+      editorFontSize: _parseFontSize(map['editor_font_size']),
     );
   }
 
@@ -32,13 +35,19 @@ class AppSettings {
     return {
       'theme': themeId.name,
       'sort_mode': sortMode.name,
+      'editor_font_size': editorFontSize,
     };
   }
 
-  AppSettings copyWith({AppThemeId? themeId, AppSortMode? sortMode}) {
+  AppSettings copyWith({
+    AppThemeId? themeId,
+    AppSortMode? sortMode,
+    double? editorFontSize,
+  }) {
     return AppSettings(
       themeId: themeId ?? this.themeId,
       sortMode: sortMode ?? this.sortMode,
+      editorFontSize: editorFontSize ?? this.editorFontSize,
     );
   }
 
@@ -56,5 +65,12 @@ class AppSettings {
       (e) => e.name == value,
       orElse: () => AppSortMode.alphabetical,
     );
+  }
+
+  static double _parseFontSize(dynamic value) {
+    if (value == null) return 12.0;
+    if (value is int) return value.toDouble();
+    if (value is double) return value.clamp(10.0, 20.0);
+    return 12.0;
   }
 }

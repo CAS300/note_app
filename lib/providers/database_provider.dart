@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../services/database_service.dart';
 import '../services/notes_service.dart';
+import '../services/groups_service.dart';
 import 'workspace_provider.dart';
 import '../core/utils.dart';
 import '../models/database_info.dart';
@@ -11,9 +12,14 @@ class DatabaseState {
   final bool isConnected;
   final String? activeDbName;
   final NotesService? notesService;
+  final GroupsService? groupsService;
 
-  DatabaseState(
-      {this.isConnected = false, this.activeDbName, this.notesService});
+  DatabaseState({
+    this.isConnected = false,
+    this.activeDbName,
+    this.notesService,
+    this.groupsService,
+  });
 }
 
 class DatabaseNotifier extends StateNotifier<DatabaseState> {
@@ -24,15 +30,25 @@ class DatabaseNotifier extends StateNotifier<DatabaseState> {
 
   void connect(String workspacePath, String dbName) {
     _dbService.openDatabase(workspacePath, dbName);
-    final ns = _dbService.db != null ? NotesService(_dbService.db!) : null;
+    final db = _dbService.db;
+    final ns = db != null ? NotesService(db) : null;
+    final gs = db != null ? GroupsService(db) : null;
     state = DatabaseState(
-        isConnected: true, activeDbName: dbName, notesService: ns);
+      isConnected: true,
+      activeDbName: dbName,
+      notesService: ns,
+      groupsService: gs,
+    );
   }
 
   void disconnect() {
     _dbService.closeDatabase();
     state = DatabaseState(
-        isConnected: false, activeDbName: null, notesService: null);
+      isConnected: false,
+      activeDbName: null,
+      notesService: null,
+      groupsService: null,
+    );
   }
 
   Future<void> switchDatabase(String dbName) async {
@@ -51,7 +67,6 @@ class DatabaseNotifier extends StateNotifier<DatabaseState> {
       return "No workspace active";
     }
 
-    // Sanitize filename from label
     final safeName = label.toLowerCase().replaceAll(RegExp(r'[^a-z0-9_]'), '_');
     final fullDbName = "$safeName.db";
 

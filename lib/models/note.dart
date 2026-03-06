@@ -7,6 +7,7 @@ class Note {
   final int updatedAt;
   final bool isDeleted;
   final int sortOrder;
+  final bool isShortcut;
 
   Note({
     this.id,
@@ -17,6 +18,7 @@ class Note {
     required this.updatedAt,
     this.isDeleted = false,
     this.sortOrder = 0,
+    this.isShortcut = false,
   });
 
   factory Note.fromMap(Map<String, dynamic> map) {
@@ -29,6 +31,7 @@ class Note {
       updatedAt: map['updated_at'] as int,
       isDeleted: (map['is_deleted'] as int) == 1,
       sortOrder: (map['sort_order'] as int?) ?? 0,
+      isShortcut: ((map['is_shortcut'] as int?) ?? 0) == 1,
     );
   }
 
@@ -42,6 +45,7 @@ class Note {
       'updated_at': updatedAt,
       'is_deleted': isDeleted ? 1 : 0,
       'sort_order': sortOrder,
+      'is_shortcut': isShortcut ? 1 : 0,
     };
   }
 
@@ -54,6 +58,7 @@ class Note {
     int? updatedAt,
     bool? isDeleted,
     int? sortOrder,
+    bool? isShortcut,
   }) {
     return Note(
       id: id ?? this.id,
@@ -64,6 +69,7 @@ class Note {
       updatedAt: updatedAt ?? this.updatedAt,
       isDeleted: isDeleted ?? this.isDeleted,
       sortOrder: sortOrder ?? this.sortOrder,
+      isShortcut: isShortcut ?? this.isShortcut,
     );
   }
 }

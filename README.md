@@ -8,16 +8,27 @@ A modern, fully offline, local-first Windows desktop note-taking application bui
 
 ## Features
 
-- **Desktop-first layout** — ChatGPT-inspired design with a left sidebar and right editor panel
+- **Desktop-first layout** — ChatGPT-inspired design with left sidebar + right editor panel
 - **Multi-database support** — Multiple SQLite databases per workspace, switchable in one click
 - **Workspace manifest system** — `.notes_workspace.json` tracks databases, settings, and active state
+- **Auto-load last workspace** — App remembers the last opened workspace and loads it automatically on restart
 - **Notes CRUD** — Create, rename, edit, duplicate, and soft-delete notes
 - **Debounced autosave** — Saves automatically 700 ms after you stop typing
 - **2 built-in themes** — Default (deep blue) and Terminal (green-on-black), with scalable theme system
 - **3 sort modes** — Alphabetical, Last Modified, and Custom manual ordering
 - **Drag-and-drop reordering** — Reorder notes in the sidebar when Custom sort is active
-- **Right-click context menu** — Rename, Duplicate, Add to Group (placeholder), Delete
-- **Persistent settings** — Theme and sort preferences persist in the workspace manifest
+- **Groups** — Create, rename, delete, and color-code note groups
+- **Group color accents** — Notes visually inherit their group color (left accent bar + name pill)
+- **Group filtering** — Click a group chip in the sidebar to filter notes
+- **Scrollable group bar** — Horizontal scroll with mouse wheel support + visible Scrollbar, "+" button always accessible
+- **Right-click context menus** — Notes: Düzenle, Kısayol toggle, Rename, Duplicate, Group, Delete. Groups: Rename, Change Color, Delete
+- **Shortcut notes** — Mark a note as shortcut; left-click copies content to clipboard with feedback
+- **Editor toolbar** — Formatting actions: H1, H2, H3, Checkbox, Bold, Emoji
+- **Robust toolbar actions** — Headings/checkboxes strip existing prefixes before applying; toggleable; bold wraps selection correctly
+- **Live Markdown Highlighting** — Editor parses raw plain text and highlights headings, checkboxes, and bold text dynamically as you type without changing the storage format
+- **Emoji picker** — Full emoji picker via `emoji_picker_flutter`, inserts directly into content
+- **Adjustable editor font size** — 10–20 pt stepper in Settings, persisted in manifest. Editor uses clean sans-serif typography (Segoe UI/Inter/Roboto)
+- **Persistent settings** — Theme, sort mode, font size persist in the workspace manifest
 - **Modular architecture** — Services → Repositories → Providers → UI
 
 ---
@@ -28,22 +39,22 @@ A modern, fully offline, local-first Windows desktop note-taking application bui
 ┌─────────────────────────────────────────────────┐
 │                     UI Layer                    │
 │  AppShell · AppSidebar · NotesList · EditorPanel│
-│                  SettingsDialog                 │
+│  MarkdownTextController · SettingsDialog        │
 ├─────────────────────────────────────────────────┤
 │                 Provider Layer                  │
-│  workspace · database · notes · settings        │
+│  workspace · database · notes · groups · settings│
+│               app_preferences                   │
 ├─────────────────────────────────────────────────┤
 │               Repository Layer                  │
-│                NotesRepository                  │
+│          NotesRepository · GroupsRepository      │
 ├─────────────────────────────────────────────────┤
 │                 Service Layer                   │
 │  WorkspaceService · DatabaseService · NotesSvc  │
+│           GroupsService · AppPreferences         │
 ├─────────────────────────────────────────────────┤
-│              SQLite (via sqlite3)               │
+│   SQLite (via sqlite3)  ·  SharedPreferences    │
 └─────────────────────────────────────────────────┘
 ```
-
-**Key principle:** UI never calls SQLite directly. All data flows through providers which delegate to repositories/services.
 
 ---
 
@@ -51,87 +62,130 @@ A modern, fully offline, local-first Windows desktop note-taking application bui
 
 ```
 lib/
-├── main.dart                       # App entry point, ProviderScope
+├── main.dart                           # Entry point, initializes AppPreferences
 ├── app/
-│   └── main.dart                   # MaterialApp (ConsumerWidget), theme from settingsProvider
+│   └── main.dart                       # MaterialApp, ConsumerWidget, theme from settings
 ├── core/
-│   ├── constants.dart              # App-wide constants
-│   ├── utils.dart                  # Utility helpers (timestamps)
-│   └── theme_definitions.dart      # Centralized theme builder + NoteAppColors extension
+│   ├── constants.dart
+│   ├── utils.dart
+│   └── theme_definitions.dart          # 2 themes + NoteAppColors ThemeExtension
 ├── models/
-│   ├── note.dart                   # Note data model (with sort_order)
-│   ├── database_info.dart          # Database metadata (name, label, createdAt)
-│   ├── workspace_manifest.dart     # Workspace manifest model
-│   └── app_settings.dart           # AppThemeId, AppSortMode, AppSettings
+│   ├── note.dart                       # Note (group_id, sort_order, is_shortcut)
+│   ├── group.dart                      # Group model + GroupColors palette (10 colors)
+│   ├── database_info.dart
+│   ├── workspace_manifest.dart
+│   └── app_settings.dart               # AppThemeId, AppSortMode, editorFontSize
 ├── services/
-│   ├── workspace_service.dart      # Load/save/create workspace manifests
-│   ├── database_service.dart       # Open/close SQLite, ensure schema + migrations
-│   └── notes_service.dart          # CRUD queries with sort modes + reorder + duplicate
+│   ├── workspace_service.dart
+│   ├── database_service.dart           # Schema + migrations (notes, groups, is_shortcut)
+│   ├── notes_service.dart              # CRUD + sort + group filter + reorder + shortcut toggle
+│   ├── groups_service.dart             # Groups CRUD + assign/remove note
+│   └── app_preferences.dart            # shared_preferences wrapper (last workspace path)
 ├── data/
 │   └── repositories/
-│       └── notes_repository.dart   # Thin wrapper over NotesService
+│       ├── notes_repository.dart
+│       └── groups_repository.dart
 ├── providers/
-│   ├── workspace_provider.dart     # WorkspaceState + WorkspaceNotifier
-│   ├── database_provider.dart      # DatabaseState + DatabaseNotifier
-│   ├── notes_provider.dart         # NotesState + NotesNotifier (reorder, rename, duplicate)
-│   └── settings_provider.dart      # AppSettings notifier, persists to manifest
+│   ├── workspace_provider.dart
+│   ├── database_provider.dart          # Exposes NotesService + GroupsService
+│   ├── notes_provider.dart             # Group filter sync, sort sync, toggleShortcut
+│   ├── groups_provider.dart            # Group filter state, CRUD
+│   ├── settings_provider.dart          # Theme + sort + font size → manifest
+│   └── app_preferences_provider.dart   # Device-level preferences
 └── ui/
     ├── screens/
-    │   └── settings_screen.dart    # Settings dialog (theme, sort, workspace, DBs)
+    │   └── settings_screen.dart        # Theme, sort, font size, workspace, DBs
     └── widgets/
-        ├── app_shell.dart          # Root shell: sidebar + editor Row
-        ├── app_sidebar.dart        # 300px sidebar with sort selector tabs
-        ├── notes_list.dart         # ListView / ReorderableListView + context menu
-        └── main_editor_panel.dart  # DB selector, title field, content field, autosave
+        ├── app_shell.dart              # Auto-loads last workspace on startup
+        ├── app_sidebar.dart            # Scrollable groups bar, sort tabs, search
+        ├── notes_list.dart             # Shortcut badge, click-to-copy, context menu
+        ├── main_editor_panel.dart      # Robust toolbar, emoji, group chip, font size
+        └── markdown_text_controller.dart # Hybrid live syntax highlighting for editor
 ```
 
 ---
 
-## Theme System
+## Edit / View Hybrid Editor
 
-Two built-in themes, selectable from Settings:
+To deliver a high-quality modern desktop note-taking experience _while still storing exactly plain text offline_:
+The app uses a custom `MarkdownTextController` which overrides how Flutter builds its text spans during typing.
 
-| Theme                   | Background | Primary   | Hover     | Highlight |
-| ----------------------- | ---------- | --------- | --------- | --------- |
-| **Default (Koyu Mavi)** | `#0F172A`  | `#2563EB` | `#38BDF8` | `#60A5FA` |
-| **Terminal (Yeşil)**    | `#000000`  | `#00FF41` | `#00C853` | `#00E676` |
+- Lines starting with `# `, `## `, `### ` enlarge automatically and turn bold.
+- Lines starting with `- [ ] ` or `- [x] ` render custom distinct styles.
+- Content wrapping `**words**` highlights instantly.
+- The default text is drawn with a high-quality desktop typography stack (Segoe UI, Inter, Roboto) rather than generic monospace code font.
 
-Themes are defined centrally in `theme_definitions.dart` using a shared builder. Adding a new theme requires only adding an enum value and a color set — no widget changes needed.
-
-Theme preference persists in the workspace manifest `settings` map.
+This provides the exact experience requested—structured, polished, beautiful—without relying on heavy unmaintainable HTML wrappers or complex `quill_editor` models.
 
 ---
 
-## Sort Modes
+## Shortcut Notes
 
-| Mode                       | Order        | SQL                                        |
-| -------------------------- | ------------ | ------------------------------------------ |
-| **Alphabetical** (default) | Title A→Z    | `ORDER BY LOWER(title) ASC`                |
-| **Last Modified**          | Newest first | `ORDER BY updated_at DESC`                 |
-| **Custom**                 | Manual       | `ORDER BY sort_order ASC, updated_at DESC` |
+A note can be marked as a "Shortcut Note" via the right-click context menu.
 
-- The sort selector appears as segmented tabs below the search bar.
-- Also configurable from the Settings dialog dropdown.
-- Sort preference persists in the workspace manifest.
+| Action                  | Behavior                                                       |
+| ----------------------- | -------------------------------------------------------------- |
+| **Mark as shortcut**    | Right-click → "Kısayol Olarak Ayarla"                          |
+| **Remove shortcut**     | Right-click → "Kısayoldan Çıkar"                               |
+| **Left-click shortcut** | Copies note content to clipboard + shows "Kopyalandı" snackbar |
+| **Edit shortcut**       | Right-click → "Düzenle" opens it in the editor                 |
+| **Visual indicator**    | ⚡ bolt icon next to the title in the notes list               |
 
-### Custom Drag-and-Drop
+Stored as `is_shortcut INTEGER NOT NULL DEFAULT 0` in the notes table.
 
-When sort mode is **Custom**:
+---
 
-- A drag handle icon (≡) appears on each note item.
-- Notes can be reordered by clicking and dragging the handle.
-- The new order is written to the `sort_order` column in the database.
-- Drag reorder is **disabled** in Alphabetical and Last Modified modes.
+## Groups
+
+### Schema
+
+```sql
+groups(
+  id          INTEGER PRIMARY KEY,
+  name        TEXT NOT NULL,
+  color       TEXT NOT NULL,    -- hex string, e.g. '#2563EB'
+  created_at  INTEGER NOT NULL
+)
+```
+
+Notes reference groups via `group_id INTEGER NULL` in the `notes` table.
+
+### Scrollable Group Bar
+
+The group chips are in a horizontally scrollable row with:
+
+- Dedicated visible `Scrollbar` on hover underneath the chips
+- Mouse wheel translates vertical scroll to horizontal effortlessly
+- The "+" button is the last item inside the scroll area, always reachable
+- Works cleanly with many groups without layout overflow clipping
+
+---
+
+## Editor Toolbar
+
+### Robust Formatting Actions
+
+| Button       | Text Convention | Behavior                                                                     |
+| ------------ | --------------- | ---------------------------------------------------------------------------- |
+| **Emoji**    | N/A             | Toggles emoji picker panel below content                                     |
+| **H1**       | `# ` prefix     | Strips existing prefix → applies `# ` (toggles off if already H1)            |
+| **H2**       | `## ` prefix    | Strips existing prefix → applies `## ` (toggles off if already H2)           |
+| **H3**       | `### ` prefix   | Strips existing prefix → applies `### ` (toggles off if already H3)          |
+| **Checkbox** | `- [ ] ` prefix | Strips heading prefix → toggles `- [ ] ` on/off                              |
+| **Bold**     | `**text**`      | Wraps selection with `**`. No selection → inserts `****` with cursor between |
+
+All actions operate on the **current line** where the cursor sits. Heading/checkbox actions strip conflicting prefixes before applying. Clicking the same button again toggles it off.
+
+### Editor Settings
+
+- Default text size: **12pt** (configurable 10–20 pt in Settings)
+- Font: `Segoe UI` / `Inter` / `Roboto`
+- Title: distinct 24pt heading style
+- Content: 1.6 line height for readability
 
 ---
 
 ## Database Schema
-
-### `meta` table
-
-```sql
-meta(key TEXT PRIMARY KEY, value TEXT)
-```
 
 ### `notes` table
 
@@ -144,67 +198,36 @@ notes(
   created_at  INTEGER NOT NULL,
   updated_at  INTEGER NOT NULL,
   is_deleted  INTEGER NOT NULL DEFAULT 0,
-  sort_order  INTEGER NOT NULL DEFAULT 0   -- added in migration v2
+  sort_order  INTEGER NOT NULL DEFAULT 0,
+  is_shortcut INTEGER NOT NULL DEFAULT 0
 )
 ```
 
-**Migration:** When `DatabaseService` opens a database, it checks `PRAGMA table_info` and adds `sort_order` if missing. Existing notes receive a sensible order based on `created_at`.
+### `groups` table
 
----
-
-## Right-Click Context Menu
-
-Right-clicking a note in the sidebar opens a context menu with:
-
-| Action               | Behavior                                        |
-| -------------------- | ----------------------------------------------- |
-| **Yeniden Adlandır** | Opens a rename dialog                           |
-| **Kopyala**          | Duplicates the note                             |
-| **Gruba Ekle**       | Placeholder dialog (groups not yet implemented) |
-| **Sil**              | Soft deletes the note                           |
-
----
-
-## Workspace & Manifest
-
-The app operates within a **workspace folder** chosen by the user. Inside that folder, a manifest file tracks all databases and settings.
-
-### Manifest: `.notes_workspace.json`
-
-```json
-{
-  "format_version": 1,
-  "app_id": "com.erensahin.notes",
-  "workspace_id": "c5579b7b-...",
-  "active_db": "notes_main.db",
-  "databases": [
-    { "name": "notes_main.db", "label": "Ana", "created_at": 1772806809 }
-  ],
-  "settings": {
-    "theme": "defaultTheme",
-    "sort_mode": "alphabetical"
-  }
-}
+```sql
+groups(
+  id          INTEGER PRIMARY KEY,
+  name        TEXT NOT NULL,
+  color       TEXT NOT NULL,
+  created_at  INTEGER NOT NULL
+)
 ```
 
-| Field                | Purpose                                     |
-| -------------------- | ------------------------------------------- |
-| `name`               | Actual SQLite filename on disk              |
-| `label`              | User-friendly display name shown in the UI  |
-| `active_db`          | The `name` of the currently active database |
-| `settings.theme`     | Selected theme ID                           |
-| `settings.sort_mode` | Selected sort mode                          |
+---
+
+## Settings Storage
+
+| Setting             | Stored In                         | Key                   |
+| ------------------- | --------------------------------- | --------------------- |
+| Theme               | Workspace manifest `settings`     | `theme`               |
+| Sort mode           | Workspace manifest `settings`     | `sort_mode`           |
+| Editor font size    | Workspace manifest `settings`     | `editor_font_size`    |
+| Last workspace path | shared_preferences (device-level) | `last_workspace_path` |
 
 ---
 
 ## How to Run
-
-### Prerequisites
-
-- Flutter SDK ≥ 3.2.0
-- Windows desktop development tools (Visual Studio with C++ workload)
-
-### Steps
 
 ```bash
 cd note_app
@@ -212,54 +235,19 @@ flutter pub get
 flutter run -d windows
 ```
 
----
-
-## Dependencies
-
-| Package                | Purpose                            |
-| ---------------------- | ---------------------------------- |
-| `flutter_riverpod`     | State management                   |
-| `sqlite3`              | SQLite database driver             |
-| `sqlite3_flutter_libs` | Native SQLite binaries for Flutter |
-| `file_picker`          | Folder/file picker dialogs         |
-| `path`                 | Cross-platform path manipulation   |
-| `path_provider`        | Platform-specific directory paths  |
-| `uuid`                 | UUID generation for workspace IDs  |
-
----
-
-## Current Limitations
-
-- No rich text editor — content is plain text for now
-- No note groups or folders (placeholder exists)
-- No keyboard shortcuts
-- Search filters in memory (no FTS)
-- No import/export
-- No undo/redo history beyond system defaults
-
----
-
-## Planned Future Phases
-
-1. **Groups & Folders** — Organize notes into hierarchical groups via `group_id`
-2. **Shortcuts** — Quick-access pinned notes section
-3. **Advanced Editor Engine** — Rich text / Markdown support
-4. **Heading Folding** — Collapse/expand sections
-5. **Drive Export** — Export database snapshots
-6. **Full-Text Search** — SQLite FTS5 integration
-7. **Additional Themes** — Light mode, custom accent colors
+**Requires:** Flutter SDK ≥ 3.2.0, Visual Studio with C++ workload.
 
 ---
 
 ## Troubleshooting
 
-| Issue                               | Solution                                           |
-| ----------------------------------- | -------------------------------------------------- |
-| App shows "Çalışma alanı seçilmedi" | Click **Klasör Seç** and pick a folder             |
-| "Database file already exists"      | Choose a different label/name                      |
-| Notes don't appear after DB switch  | Ensure the DB file exists in workspace             |
-| Build fails on Windows              | Ensure Visual Studio C++ build tools are installed |
-| `sqlite3` import error              | Run `flutter pub get`                              |
+| Problem                             | Solution                                                                  |
+| ----------------------------------- | ------------------------------------------------------------------------- |
+| App asks for workspace every launch | Check `shared_preferences` is working; ensure the saved path still exists |
+| Groups overflow sidebar             | Fixed — group bar is horizontally scrollable with mouse wheel support     |
+| Bold inserts only `*`               | Fixed — now properly inserts `****` or wraps selection with `**`          |
+| Headings don't remove old prefix    | Fixed — all heading/checkbox actions strip existing prefixes first        |
+| Font size not changing              | Adjust in Settings → Editör → Yazı Boyutu (10–20 pt)                      |
 
 ---
 

@@ -10,8 +10,12 @@ class NotesService {
 
   NotesService(this._db);
 
-  /// Fetch notes using the specified sort mode.
-  List<Note> fetchAllNotes({AppSortMode sortMode = AppSortMode.alphabetical}) {
+  /// Fetch notes with sort mode and optional group filter.
+  List<Note> fetchAllNotes({
+    AppSortMode sortMode = AppSortMode.alphabetical,
+    int? groupId,
+    bool filterByGroup = false,
+  }) {
     String orderClause;
     switch (sortMode) {
       case AppSortMode.alphabetical:
@@ -25,8 +29,17 @@ class NotesService {
         break;
     }
 
+    String whereClause = 'WHERE is_deleted = 0';
+    final args = <Object?>[];
+
+    if (filterByGroup) {
+      whereClause += ' AND group_id = ?';
+      args.add(groupId);
+    }
+
     final rs = _db.select(
-      'SELECT * FROM notes WHERE is_deleted = 0 $orderClause',
+      'SELECT * FROM notes $whereClause $orderClause',
+      args,
     );
     return rs.map((row) => Note.fromMap(row)).toList();
   }
@@ -45,14 +58,15 @@ class NotesService {
     return rs.first['next_order'] as int;
   }
 
-  Note createNote({String title = 'Başlıksız Not', String content = ''}) {
+  Note createNote(
+      {String title = 'Başlıksız Not', String content = '', int? groupId}) {
     final now = AppUtils.currentTimestamp();
     final order = _nextSortOrder();
     final stmt = _db.prepare('''
-      INSERT INTO notes (title, content, group_id, created_at, updated_at, is_deleted, sort_order)
-      VALUES (?, ?, NULL, ?, ?, 0, ?)
+      INSERT INTO notes (title, content, group_id, created_at, updated_at, is_deleted, sort_order, is_shortcut)
+      VALUES (?, ?, ?, ?, ?, 0, ?, 0)
     ''');
-    stmt.execute([title, content, now, now, order]);
+    stmt.execute([title, content, groupId, now, now, order]);
     stmt.dispose();
 
     final id = _db.lastInsertRowId;
@@ -60,6 +74,7 @@ class NotesService {
       id: id,
       title: title,
       content: content,
+      groupId: groupId,
       createdAt: now,
       updatedAt: now,
       sortOrder: order,
@@ -109,6 +124,7 @@ class NotesService {
     return createNote(
       title: '${source.title} (kopya)',
       content: source.content,
+      groupId: source.groupId,
     );
   }
 
@@ -118,6 +134,15 @@ class NotesService {
     for (int i = 0; i < orderedIds.length; i++) {
       stmt.execute([i, orderedIds[i]]);
     }
+    stmt.dispose();
+  }
+
+  /// Toggle shortcut mode for a note.
+  void toggleShortcut(int id) {
+    final stmt = _db.prepare(
+      'UPDATE notes SET is_shortcut = CASE WHEN is_shortcut = 0 THEN 1 ELSE 0 END WHERE id = ?',
+    );
+    stmt.execute([id]);
     stmt.dispose();
   }
 }

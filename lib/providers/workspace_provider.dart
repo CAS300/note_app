@@ -48,7 +48,8 @@ class WorkspaceNotifier extends StateNotifier<WorkspaceState> {
   }
 }
 
-final workspaceProvider = StateNotifierProvider<WorkspaceNotifier, WorkspaceState>((ref) {
+final workspaceProvider =
+    StateNotifierProvider<WorkspaceNotifier, WorkspaceState>((ref) {
   final service = ref.watch(workspaceServiceProvider);
   return WorkspaceNotifier(service);
 });

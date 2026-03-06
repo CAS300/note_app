@@ -53,26 +53,46 @@ class DatabaseService {
       )
     ''');
 
-    // Migration: add sort_order column if missing (v1 → v2)
+    // Groups table
+    database.execute('''
+      CREATE TABLE IF NOT EXISTS groups (
+        id INTEGER PRIMARY KEY,
+        name TEXT NOT NULL,
+        color TEXT NOT NULL,
+        created_at INTEGER NOT NULL
+      )
+    ''');
+
+    // Migrations
     _migrateAddSortOrder(database);
+    _migrateAddIsShortcut(database);
   }
 
   /// Safely adds the sort_order column to existing databases.
   void _migrateAddSortOrder(Database database) {
-    // Check if column already exists by inspecting table_info.
     final cols = database.select("PRAGMA table_info('notes')");
     final hasSortOrder = cols.any((row) => row['name'] == 'sort_order');
     if (!hasSortOrder) {
       database.execute(
         'ALTER TABLE notes ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0',
       );
-      // Give existing notes a sensible order based on created_at.
       database.execute('''
         UPDATE notes SET sort_order = (
           SELECT COUNT(*) FROM notes AS n2
           WHERE n2.created_at < notes.created_at
         )
       ''');
+    }
+  }
+
+  /// Safely adds the is_shortcut column to existing databases.
+  void _migrateAddIsShortcut(Database database) {
+    final cols = database.select("PRAGMA table_info('notes')");
+    final hasIsShortcut = cols.any((row) => row['name'] == 'is_shortcut');
+    if (!hasIsShortcut) {
+      database.execute(
+        'ALTER TABLE notes ADD COLUMN is_shortcut INTEGER NOT NULL DEFAULT 0',
+      );
     }
   }
 
