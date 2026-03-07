@@ -5,6 +5,7 @@ import '../../providers/workspace_provider.dart';
 import '../../providers/database_provider.dart';
 import '../../providers/settings_provider.dart';
 import '../../providers/app_preferences_provider.dart';
+import '../../providers/export_provider.dart';
 import '../../models/app_settings.dart';
 import '../../core/theme_definitions.dart';
 
@@ -371,7 +372,7 @@ class SettingsDialog extends ConsumerWidget {
 
                 const SizedBox(height: 20),
 
-                // ── Export Section placeholder ──
+                // ── Export Section ──
                 _sectionTitle(theme, colors, 'Dışa Aktarma'),
                 const SizedBox(height: 8),
                 _settingsCard(
@@ -379,9 +380,45 @@ class SettingsDialog extends ConsumerWidget {
                   children: [
                     _infoRow(
                       theme,
-                      'Drive Yolu',
+                      'Dışa Aktarım Yolu',
                       (manifest?.settings['drive_export_path'] as String?) ??
                           'Ayarlanmadı',
+                    ),
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            onPressed: () => _pickExportPath(context, ref),
+                            icon:
+                                const Icon(Icons.folder_open_rounded, size: 16),
+                            label: const Text('Klasör Seç'),
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: colors.textPrimary,
+                              side: BorderSide(color: colors.border),
+                              shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(8)),
+                              padding: const EdgeInsets.symmetric(vertical: 10),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            onPressed: () => _exportData(context, ref),
+                            icon:
+                                const Icon(Icons.upload_file_rounded, size: 16),
+                            label: const Text('Yedeği Dışa Aktar'),
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: colors.textPrimary,
+                              side: BorderSide(color: colors.border),
+                              shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(8)),
+                              padding: const EdgeInsets.symmetric(vertical: 10),
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                   ],
                 ),
@@ -522,6 +559,68 @@ class SettingsDialog extends ConsumerWidget {
       if (error != null && context.mounted) {
         ScaffoldMessenger.of(context)
             .showSnackBar(SnackBar(content: Text(error)));
+      }
+    }
+  }
+
+  Future<void> _pickExportPath(BuildContext context, WidgetRef ref) async {
+    final picked = await FilePicker.platform.getDirectoryPath();
+    if (picked != null) {
+      final state = ref.read(workspaceProvider);
+      final manifest = state.manifest;
+      if (manifest != null) {
+        final newSettings = Map<String, dynamic>.from(manifest.settings);
+        newSettings['drive_export_path'] = picked;
+        final newManifest = manifest.copyWith(settings: newSettings);
+        await ref.read(workspaceProvider.notifier).updateManifest(newManifest);
+      }
+    }
+  }
+
+  Future<void> _exportData(BuildContext context, WidgetRef ref) async {
+    final state = ref.read(workspaceProvider);
+    final dbState = ref.read(databaseProvider);
+    final manifest = state.manifest;
+
+    if (state.path == null ||
+        manifest == null ||
+        dbState.activeDbName == null) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+              content: Text('Çalışma alanı veya veritabanı aktif değil.')),
+        );
+      }
+      return;
+    }
+
+    final targetPath = manifest.settings['drive_export_path'] as String?;
+    if (targetPath == null || targetPath.isEmpty) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+              content: Text('Lütfen önce bir dışa aktarım klasörü seçin.')),
+        );
+      }
+      return;
+    }
+
+    final result = await ref.read(exportServiceProvider).exportToLocalDrive(
+          targetDirPath: targetPath,
+          workspacePath: state.path!,
+          activeDbName: dbState.activeDbName!,
+        );
+
+    if (context.mounted) {
+      if (result.success) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Yedek başarıyla dışa aktarıldı.')),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+              content: Text(result.error ?? 'Bilinmeyen bir hata oluştu.')),
+        );
       }
     }
   }

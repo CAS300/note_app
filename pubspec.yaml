@@ -24,6 +24,32 @@ dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^3.0.0
+  flutter_launcher_icons: ^0.13.1
+  msix: ^3.7.1
 
 flutter:
   uses-material-design: true
+
+flutter_launcher_icons:
+  android: false
+  ios: false
+  image_path: "assets/icons/app_icon.png"
+  windows:
+    generate: true
+    image_path: "assets/icons/app_icon.png"
+    icon_size: 256
+  macos:
+    generate: false
+  web:
+    generate: false
+
+msix_config:
+  display_name: "Note App"
+  publisher_display_name: "MyPublisher" # PLACEHOLDER
+  identity_name: "YourPublisher.NoteApp" # PLACEHOLDER
+  msix_version: "1.0.0.0"
+  logo_path: "assets/icons/app_icon.png"
+  capabilities: "internetClient"
+  # To sign the app, uncomment and fill out:
+  # certificate_path: "path/to/certificate.pfx" # PLACEHOLDER
+  # certificate_password: "YOUR_PASSWORD" # PLACEHOLDER

@@ -1,0 +1,10 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Note App
+Comment=A modern, offline-first notes application.
+Exec=note_app
+Icon=note_app
+Terminal=false
+Categories=Utility;TextEditor;
+Keywords=Notes;Notepad;Offline;

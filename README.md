@@ -6,8 +6,14 @@ A modern, fully offline, local-first Windows desktop note-taking application bui
 
 ---
 
-## Features
+## Key Features
 
+- **Local-first, offline by default:** All data resides exactly where you tell it to.
+- **Multi-Database Support:** Keep work, personal, and project notes completely separate.
+- **Customizable Workspace:** Choose your own vault directory to easily back up or sync with your preferred cloud drive provider.
+- **Clean Interface:** Designed specifically for desktop screens with a persistent sidebar and focused editor view.
+- **Secure by Default:** No telemetry, no forced account creation, no vendor lock-in.
+- **Desktop Packaging Ready**: Reproducible MSIX and PKGBUILD setups included (see [PACKAGING.md](PACKAGING.md)).
 - **Desktop-first layout** — ChatGPT-inspired design with left sidebar + right editor panel
 - **Multi-database support** — Multiple SQLite databases per workspace, switchable in one click
 - **Workspace manifest system** — `.notes_workspace.json` tracks databases, settings, and active state

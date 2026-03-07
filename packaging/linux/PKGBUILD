@@ -1,0 +1,49 @@
+# Maintainer: Your Name <your.email@example.com>
+pkgname=note-app
+pkgver=1.0.0
+pkgrel=1
+pkgdesc="A modern, offline-first note-taking application."
+arch=('x86_64')
+url="https://github.com/yourusername/note_app"
+license=('MIT')
+depends=('gtk3' 'sqlite')
+makedepends=('flutter')
+# For local builds, we use the local directory instead of a remote git repo
+source=("local://../../")
+sha256sums=('SKIP')
+
+build() {
+  # Change to the flutter project root
+  cd "$srcdir/"
+  
+  # Fetch dependencies and build
+  export PUB_CACHE="$srcdir/.pub-cache"
+  flutter pub get
+  flutter build linux --release
+}
+
+package() {
+  cd "$srcdir/"
+
+  # The built binary location
+  local _release_dir="build/linux/x64/release/bundle"
+
+  # Install binary and data
+  install -dm755 "$pkgdir/opt/$pkgname"
+  cp -r "$_release_dir"/* "$pkgdir/opt/$pkgname/"
+  
+  # Set permissions
+  find "$pkgdir/opt/$pkgname" -type d -exec chmod 755 {} \;
+  find "$pkgdir/opt/$pkgname" -type f -exec chmod 644 {} \;
+  chmod 755 "$pkgdir/opt/$pkgname/note_app"
+
+  # Link binary to /usr/bin
+  install -dm755 "$pkgdir/usr/bin"
+  ln -s "/opt/$pkgname/note_app" "$pkgdir/usr/bin/note_app"
+
+  # Install Desktop Entry
+  install -Dm644 "packaging/linux/note-app.desktop" "$pkgdir/usr/share/applications/note-app.desktop"
+
+  # Install Icon
+  install -Dm644 "assets/icons/app_icon.png" "$pkgdir/usr/share/pixmaps/note_app.png"
+}
