@@ -57,6 +57,20 @@ To distribute outside the Microsoft Store without warnings, the `.msix` must be 
   dart run msix:create --certificate-path C:\path\to\cert.pfx --certificate-password YOUR_PASSWORD
   ```
 
+### Troubleshooting: 0x800B010A (Untrusted Certificate)
+
+Since this is a local build, the `.msix` is signed with a temporary self-signed certificate. Windows doesn't trust it by default. To install anyway:
+
+1. **Right-click** the `note_app.msix` file -> **Properties**.
+2. Go to the **Digital Signatures** tab.
+3. Select the signature in the list and click **Details**.
+4. Click **View Certificate**.
+5. Click **Install Certificate...**
+6. Select **Local Machine** and click Next.
+7. Select **Place all certificates in the following store** and click **Browse**.
+8. Select **Trusted Root Certification Authorities** and click OK -> Next -> Finish.
+9. You can now run the `.msix` file to install the app.
+
 ## C) CachyOS / Arch Linux Packaging
 
 ### Prerequisites
