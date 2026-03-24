@@ -43,29 +43,10 @@ class GroupsService {
     stmt.dispose();
   }
 
-  /// Deletes group and sets all notes in it to group_id = NULL.
+  /// Deletes group. Deletion of note_groups references is handled by ON DELETE CASCADE.
   void delete(int id) {
-    final stmt1 =
-        _db.prepare('UPDATE notes SET group_id = NULL WHERE group_id = ?');
-    stmt1.execute([id]);
-    stmt1.dispose();
-
-    final stmt2 = _db.prepare('DELETE FROM groups WHERE id = ?');
-    stmt2.execute([id]);
-    stmt2.dispose();
-  }
-
-  /// Assign a note to a group.
-  void assignNote(int noteId, int groupId) {
-    final stmt = _db.prepare('UPDATE notes SET group_id = ? WHERE id = ?');
-    stmt.execute([groupId, noteId]);
-    stmt.dispose();
-  }
-
-  /// Remove a note from its group.
-  void removeNoteFromGroup(int noteId) {
-    final stmt = _db.prepare('UPDATE notes SET group_id = NULL WHERE id = ?');
-    stmt.execute([noteId]);
+    final stmt = _db.prepare('DELETE FROM groups WHERE id = ?');
+    stmt.execute([id]);
     stmt.dispose();
   }
 }

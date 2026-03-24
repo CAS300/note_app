@@ -2,7 +2,7 @@ class Note {
   final int? id;
   final String title;
   final String content;
-  final int? groupId;
+  final List<int> groupIds;
   final int createdAt;
   final int updatedAt;
   final bool isDeleted;
@@ -13,7 +13,7 @@ class Note {
     this.id,
     required this.title,
     required this.content,
-    this.groupId,
+    this.groupIds = const [],
     required this.createdAt,
     required this.updatedAt,
     this.isDeleted = false,
@@ -26,7 +26,7 @@ class Note {
       id: map['id'] as int,
       title: map['title'] as String,
       content: map['content'] as String,
-      groupId: map['group_id'] as int?,
+      groupIds: _parseGroupIds(map['groups_concat'] as String?),
       createdAt: map['created_at'] as int,
       updatedAt: map['updated_at'] as int,
       isDeleted: (map['is_deleted'] as int) == 1,
@@ -40,7 +40,7 @@ class Note {
       if (id != null) 'id': id,
       'title': title,
       'content': content,
-      'group_id': groupId,
+      // groupIds is managed separately in NoteGroups table, but can be left here to avoid breaking callers not ready yet.
       'created_at': createdAt,
       'updated_at': updatedAt,
       'is_deleted': isDeleted ? 1 : 0,
@@ -53,7 +53,7 @@ class Note {
     int? id,
     String? title,
     String? content,
-    int? groupId,
+    List<int>? groupIds,
     int? createdAt,
     int? updatedAt,
     bool? isDeleted,
@@ -64,12 +64,17 @@ class Note {
       id: id ?? this.id,
       title: title ?? this.title,
       content: content ?? this.content,
-      groupId: groupId ?? this.groupId,
+      groupIds: groupIds ?? this.groupIds,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
       isDeleted: isDeleted ?? this.isDeleted,
       sortOrder: sortOrder ?? this.sortOrder,
       isShortcut: isShortcut ?? this.isShortcut,
     );
+  }
+
+  static List<int> _parseGroupIds(String? groupsConcat) {
+    if (groupsConcat == null || groupsConcat.isEmpty) return [];
+    return groupsConcat.split(',').map((e) => int.tryParse(e)).where((e) => e != null).cast<int>().toList();
   }
 }

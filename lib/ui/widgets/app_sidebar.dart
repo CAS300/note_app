@@ -191,80 +191,50 @@ class _AppSidebarState extends ConsumerState<AppSidebar> {
     );
   }
 
-  /// Groups bar: horizontal scroll with mouse wheel support.
+  /// Groups bar: display all groups wrapped to next lines.
   Widget _buildGroupsBar(BuildContext context, ThemeData theme,
       NoteAppColors colors, GroupsState groupsState) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
-      child: SizedBox(
-        height: 42, // increased height to accommodate thinner scrollbar nicely
-        child: Listener(
-          // Translate vertical mouse wheel into horizontal scroll for the group bar.
-          onPointerSignal: (event) {
-            if (event is PointerScrollEvent) {
-              _groupsScrollController.jumpTo(
-                (_groupsScrollController.offset + event.scrollDelta.dy).clamp(
-                    0.0, _groupsScrollController.position.maxScrollExtent),
-              );
-            }
-          },
-          child: RawScrollbar(
-            controller: _groupsScrollController,
-            thumbVisibility: true,
-            trackVisibility: false,
-            thickness: 4.0,
-            radius: const Radius.circular(2),
-            thumbColor: colors.textMuted.withOpacity(0.6),
-            padding: const EdgeInsets.only(top: 36), // push scrollbar down
-            child: ListView(
-              controller: _groupsScrollController,
-              scrollDirection: Axis.horizontal,
-              physics: const ClampingScrollPhysics(),
-              padding: const EdgeInsets.only(
-                  bottom: 12), // keeps chips well above scrollbar
-              children: [
-                // "All" chip
-                _groupChip(
-                  colors,
-                  label: 'Tümü',
-                  chipColor: colors.primary,
-                  isActive: groupsState.activeGroupId == null,
-                  onTap: () =>
-                      ref.read(groupsProvider.notifier).setFilter(null),
-                ),
-                const SizedBox(width: 4),
-                // Group chips
-                ...groupsState.groups.map((g) => Padding(
-                      padding: const EdgeInsets.only(right: 4),
-                      child: _groupChip(
-                        colors,
-                        label: g.name,
-                        chipColor: _parseColor(g.color),
-                        isActive: groupsState.activeGroupId == g.id,
-                        onTap: () =>
-                            ref.read(groupsProvider.notifier).setFilter(g.id),
-                        onSecondary: (pos) =>
-                            _showGroupContextMenu(context, pos, g),
-                      ),
-                    )),
-                // + button (always reachable at the end of scroll)
-                GestureDetector(
-                  onTap: () => _showCreateGroupDialog(context),
-                  child: Container(
-                    height: 26,
-                    width: 26,
-                    margin: const EdgeInsets.only(top: 2),
-                    decoration: BoxDecoration(
-                      border: Border.all(color: colors.border),
-                      borderRadius: BorderRadius.circular(6),
-                    ),
-                    child: Icon(Icons.add, size: 14, color: colors.textMuted),
-                  ),
-                ),
-              ],
+      child: Wrap(
+        spacing: 4.0,
+        runSpacing: 4.0,
+        children: [
+          // "All" chip
+          _groupChip(
+            colors,
+            label: 'Tümü',
+            chipColor: colors.primary,
+            isActive: groupsState.activeGroupId == null,
+            onTap: () =>
+                ref.read(groupsProvider.notifier).setFilter(null),
+          ),
+          // Group chips
+          ...groupsState.groups.map((g) => _groupChip(
+                colors,
+                label: g.name,
+                chipColor: _parseColor(g.color),
+                isActive: groupsState.activeGroupId == g.id,
+                onTap: () =>
+                    ref.read(groupsProvider.notifier).setFilter(g.id),
+                onSecondary: (pos) =>
+                    _showGroupContextMenu(context, pos, g),
+              )),
+          // + button
+          GestureDetector(
+            onTap: () => _showCreateGroupDialog(context),
+            child: Container(
+              height: 26,
+              width: 26,
+              margin: const EdgeInsets.only(top: 2),
+              decoration: BoxDecoration(
+                border: Border.all(color: colors.border),
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: Icon(Icons.add, size: 14, color: colors.textMuted),
             ),
           ),
-        ),
+        ],
       ),
     );
   }
@@ -297,21 +267,21 @@ class _AppSidebarState extends ConsumerState<AppSidebar> {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            if (!isActive)
-              Container(
-                width: 7,
-                height: 7,
-                margin: const EdgeInsets.only(right: 6),
-                decoration: BoxDecoration(
-                  color: chipColor,
-                  shape: BoxShape.circle,
-                ),
+            // Always show the dot or its space to prevent layout jumps
+            Container(
+              width: 7,
+              height: 7,
+              margin: const EdgeInsets.only(right: 6),
+              decoration: BoxDecoration(
+                color: isActive ? Colors.white.withOpacity(0.8) : chipColor,
+                shape: BoxShape.circle,
               ),
+            ),
             Text(
               label,
               style: TextStyle(
                 fontSize: 11,
-                fontWeight: isActive ? FontWeight.w600 : FontWeight.w400,
+                fontWeight: FontWeight.w500,
                 color: isActive ? Colors.white : colors.textSecondary,
               ),
             ),

@@ -7,6 +7,7 @@ class MarkdownTextController extends TextEditingController {
   Color textColor;
   Color highlightColor;
   Color mutedColor;
+  String? searchQuery;
 
   MarkdownTextController({
     super.text,
@@ -14,6 +15,7 @@ class MarkdownTextController extends TextEditingController {
     required this.textColor,
     required this.highlightColor,
     required this.mutedColor,
+    this.searchQuery,
   });
 
   // Regex for parsing line-by-line formatting
@@ -38,37 +40,28 @@ class MarkdownTextController extends TextEditingController {
 
       if (_heading1.hasMatch(line)) {
         // H1
-        spans.add(TextSpan(
-          text: line,
-          style: style?.copyWith(
-            fontSize: baseFontSize * 1.6,
-            fontWeight: FontWeight.w700,
-            color: textColor,
-            height: 1.4,
-          ),
-        ));
+        _parseInlineFormatting(line, style?.copyWith(
+          fontSize: baseFontSize * 1.6,
+          fontWeight: FontWeight.w700,
+          color: textColor,
+          height: 1.4,
+        ), spans);
       } else if (_heading2.hasMatch(line)) {
         // H2
-        spans.add(TextSpan(
-          text: line,
-          style: style?.copyWith(
-            fontSize: baseFontSize * 1.35,
-            fontWeight: FontWeight.w600,
-            color: textColor,
-            height: 1.4,
-          ),
-        ));
+        _parseInlineFormatting(line, style?.copyWith(
+          fontSize: baseFontSize * 1.35,
+          fontWeight: FontWeight.w600,
+          color: textColor,
+          height: 1.4,
+        ), spans);
       } else if (_heading3.hasMatch(line)) {
         // H3
-        spans.add(TextSpan(
-          text: line,
-          style: style?.copyWith(
-            fontSize: baseFontSize * 1.15,
-            fontWeight: FontWeight.w600,
-            color: textColor,
-            height: 1.4,
-          ),
-        ));
+        _parseInlineFormatting(line, style?.copyWith(
+          fontSize: baseFontSize * 1.15,
+          fontWeight: FontWeight.w600,
+          color: textColor,
+          height: 1.4,
+        ), spans);
       } else if (_checkboxUnchecked.hasMatch(line)) {
         // Unchecked Box
         _parseInlineFormatting(
@@ -117,14 +110,11 @@ class MarkdownTextController extends TextEditingController {
       final prefixEnd = isChecked ? 6 : 6; // '- [ ] ' or '- [x] '
       if (line.length >= prefixEnd) {
         final prefix = line.substring(0, prefixEnd);
-        spans.add(TextSpan(
-          text: prefix,
-          style: defaultStyle?.copyWith(
-            color: highlightColor,
-            fontWeight: FontWeight.w600,
-            decoration: TextDecoration.none, // Never strike out the prefix box
-          ),
-        ));
+        _addTextSpanWithSearchHighlight(prefix, defaultStyle?.copyWith(
+          color: highlightColor,
+          fontWeight: FontWeight.w600,
+          decoration: TextDecoration.none, // Never strike out the prefix box
+        ), spans);
         line = line.substring(prefixEnd);
       }
     }
@@ -134,7 +124,7 @@ class MarkdownTextController extends TextEditingController {
     // Find bold matches
     final matches = _boldPattern.allMatches(line);
     if (matches.isEmpty) {
-      spans.add(TextSpan(text: line, style: defaultStyle));
+      _addTextSpanWithSearchHighlight(line, defaultStyle, spans);
       return;
     }
 
@@ -142,30 +132,71 @@ class MarkdownTextController extends TextEditingController {
     for (final match in matches) {
       // Add text before the bold segment
       if (match.start > cursor) {
-        spans.add(TextSpan(
-          text: line.substring(cursor, match.start),
-          style: defaultStyle,
-        ));
+        _addTextSpanWithSearchHighlight(
+          line.substring(cursor, match.start),
+          defaultStyle,
+          spans
+        );
       }
 
       // Add the bold segment (including the ** markers)
-      spans.add(TextSpan(
-        text: match.group(0),
-        style: defaultStyle?.copyWith(
+      _addTextSpanWithSearchHighlight(
+        match.group(0)!,
+        defaultStyle?.copyWith(
           fontWeight: FontWeight.w700,
           color: isChecked ? mutedColor : textColor,
         ),
-      ));
+        spans
+      );
 
       cursor = match.end;
     }
 
     // Add remaining text
     if (cursor < line.length) {
+      _addTextSpanWithSearchHighlight(
+        line.substring(cursor),
+        defaultStyle,
+        spans
+      );
+    }
+  }
+
+  /// Highlights search query if present, otherwise adds normal span
+  void _addTextSpanWithSearchHighlight(String text, TextStyle? style, List<TextSpan> spans) {
+    final query = searchQuery;
+    if (query == null || query.isEmpty) {
+      spans.add(TextSpan(text: text, style: style));
+      return;
+    }
+
+    final lowerText = text.toLowerCase();
+    final lowerQuery = query.toLowerCase();
+
+    int start = 0;
+    int indexOfMatch;
+
+    while ((indexOfMatch = lowerText.indexOf(lowerQuery, start)) != -1) {
+      if (indexOfMatch > start) {
+        spans.add(TextSpan(text: text.substring(start, indexOfMatch), style: style));
+      }
+
       spans.add(TextSpan(
-        text: line.substring(cursor),
-        style: defaultStyle,
+        text: text.substring(indexOfMatch, indexOfMatch + query.length),
+        style: style?.copyWith(
+          backgroundColor: Colors.orange.withOpacity(0.5),
+          color: Colors.white,
+        ) ?? TextStyle(
+          backgroundColor: Colors.orange.withOpacity(0.5),
+          color: Colors.white,
+        ),
       ));
+
+      start = indexOfMatch + query.length;
+    }
+
+    if (start < text.length) {
+      spans.add(TextSpan(text: text.substring(start), style: style));
     }
   }
 }

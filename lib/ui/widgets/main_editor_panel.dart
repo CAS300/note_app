@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:emoji_picker_flutter/emoji_picker_flutter.dart';
 import 'markdown_text_controller.dart';
@@ -9,6 +10,7 @@ import '../../providers/workspace_provider.dart';
 import '../../providers/groups_provider.dart';
 import '../../providers/settings_provider.dart';
 import '../../models/note.dart';
+import '../../models/group.dart';
 import '../../core/theme_definitions.dart';
 
 class MainEditorPanel extends ConsumerStatefulWidget {
@@ -22,6 +24,12 @@ class _MainEditorPanelState extends ConsumerState<MainEditorPanel> {
   final TextEditingController _titleController = TextEditingController();
   late MarkdownTextController _contentController;
   final FocusNode _contentFocus = FocusNode();
+  
+  // Search related state
+  bool _showSearch = false;
+  final TextEditingController _searchController = TextEditingController();
+  final FocusNode _searchFocus = FocusNode();
+
   Timer? _saveTimer;
   int? _loadedNoteId;
   bool _emojiOpen = false;
@@ -43,6 +51,8 @@ class _MainEditorPanelState extends ConsumerState<MainEditorPanel> {
     _titleController.dispose();
     _contentController.dispose();
     _contentFocus.dispose();
+    _searchController.dispose();
+    _searchFocus.dispose();
     _saveTimer?.cancel();
     super.dispose();
   }
@@ -66,15 +76,23 @@ class _MainEditorPanelState extends ConsumerState<MainEditorPanel> {
       _titleController.text = note.title;
       _contentController.text = note.content;
       _emojiOpen = false;
+      _showSearch = false;
+      _searchController.clear();
+      _contentController.searchQuery = null;
     } else if (note == null && _loadedNoteId != null) {
       _flushSave();
       _loadedNoteId = null;
       _titleController.clear();
       _contentController.clear();
       _emojiOpen = false;
+      _showSearch = false;
+      _searchController.clear();
+      _contentController.searchQuery = null;
     }
 
-    final group = note != null ? groupsState.groupById(note.groupId) : null;
+    final noteGroups = note != null 
+        ? note.groupIds.map((id) => groupsState.groupById(id)).whereType<Group>().toList() 
+        : <Group>[];
 
     return Column(
       children: [
@@ -83,7 +101,7 @@ class _MainEditorPanelState extends ConsumerState<MainEditorPanel> {
         Expanded(
           child: note != null
               ? _buildEditor(
-                  theme, colors, note, group, settings.editorFontSize)
+                  theme, colors, note, noteGroups, settings.editorFontSize)
               : _buildEmptyState(theme, colors),
         ),
       ],
@@ -169,16 +187,37 @@ class _MainEditorPanelState extends ConsumerState<MainEditorPanel> {
   }
 
   Widget _buildEditor(ThemeData theme, NoteAppColors colors, Note note,
-      dynamic group, double fontSize) {
+      List<Group> noteGroups, double fontSize) {
     // Sync controller formatting properties with current theme/settings
     _contentController.baseFontSize = fontSize;
     _contentController.textColor = colors.textSecondary;
     _contentController.highlightColor = colors.primary;
     _contentController.mutedColor = colors.textMuted;
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
+    return Focus(
+      onKeyEvent: (node, event) {
+        if (event is KeyDownEvent) {
+          final isControlOrCmd = HardwareKeyboard.instance.isControlPressed || HardwareKeyboard.instance.isMetaPressed;
+          if (event.logicalKey == LogicalKeyboardKey.keyF && isControlOrCmd) {
+            setState(() => _showSearch = true);
+            _searchFocus.requestFocus();
+            return KeyEventResult.handled;
+          }
+          if (event.logicalKey == LogicalKeyboardKey.escape && _showSearch) {
+            setState(() {
+              _showSearch = false;
+              _searchController.clear();
+              _contentController.searchQuery = null;
+            });
+            _contentFocus.requestFocus();
+            return KeyEventResult.handled;
+          }
+        }
+        return KeyEventResult.ignored;
+      },
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
         // ── Title & Group chip ──
         Padding(
           padding: const EdgeInsets.fromLTRB(40, 24, 40, 0),
@@ -204,7 +243,15 @@ class _MainEditorPanelState extends ConsumerState<MainEditorPanel> {
                       maxLines: 1,
                     ),
                   ),
-                  if (group != null) _buildGroupChip(colors, group),
+                  if (noteGroups.isNotEmpty)
+                    Wrap(
+                      spacing: 4,
+                      runSpacing: 4,
+                      children: noteGroups.map((g) => Padding(
+                        padding: const EdgeInsets.only(left: 6),
+                        child: _buildGroupChip(colors, g),
+                      )).toList(),
+                    ),
                 ],
               ),
               const SizedBox(height: 4),
@@ -219,8 +266,73 @@ class _MainEditorPanelState extends ConsumerState<MainEditorPanel> {
         // ── Toolbar ──
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 40),
-          child: _buildToolbar(theme, colors),
+          child: Row(
+            children: [
+              _buildToolbar(theme, colors),
+              const Spacer(),
+              if (!_showSearch)
+                IconButton(
+                  icon: Icon(Icons.search_rounded, size: 18, color: colors.textMuted),
+                  tooltip: 'Notta Ara (Ctrl+F)',
+                  onPressed: () {
+                    setState(() => _showSearch = true);
+                    _searchFocus.requestFocus();
+                  },
+                ),
+            ],
+          ),
         ),
+
+        if (_showSearch)
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 8),
+            child: Container(
+              height: 36,
+              decoration: BoxDecoration(
+                color: colors.card,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: colors.primary.withOpacity(0.5)),
+              ),
+              child: Row(
+                children: [
+                  const SizedBox(width: 12),
+                  Icon(Icons.search_rounded, size: 16, color: colors.primary),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: TextField(
+                      controller: _searchController,
+                      focusNode: _searchFocus,
+                      style: theme.textTheme.bodyMedium,
+                      decoration: const InputDecoration(
+                        border: InputBorder.none,
+                        enabledBorder: InputBorder.none,
+                        focusedBorder: InputBorder.none,
+                        hintText: 'Kelime ara...',
+                        isDense: true,
+                        contentPadding: EdgeInsets.zero,
+                      ),
+                      onChanged: (val) {
+                        setState(() {
+                          _contentController.searchQuery = val;
+                        });
+                      },
+                    ),
+                  ),
+                  IconButton(
+                    icon: Icon(Icons.close_rounded, size: 16, color: colors.textMuted),
+                    onPressed: () {
+                      setState(() {
+                        _showSearch = false;
+                        _searchController.clear();
+                        _contentController.searchQuery = null;
+                      });
+                      _contentFocus.requestFocus();
+                    },
+                  ),
+                ],
+              ),
+            ),
+          ),
 
         const SizedBox(height: 8),
 
@@ -299,7 +411,8 @@ class _MainEditorPanelState extends ConsumerState<MainEditorPanel> {
               ),
             ),
           ),
-      ],
+        ],
+      ),
     );
   }
 

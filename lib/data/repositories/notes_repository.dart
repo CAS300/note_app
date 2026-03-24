@@ -24,11 +24,11 @@ class NotesRepository {
   Note create(
           {String title = 'Başlıksız Not',
           String content = '',
-          int? groupId}) =>
-      _service.createNote(title: title, content: content, groupId: groupId);
+          List<int> groupIds = const []}) =>
+      _service.createNote(title: title, content: content, groupIds: groupIds);
 
-  void update(int id, {String? title, String? content}) =>
-      _service.updateNote(id, title: title, content: content);
+  void update(int id, {String? title, String? content, List<int>? groupIds}) =>
+      _service.updateNote(id, title: title, content: content, groupIds: groupIds);
 
   void softDelete(int id) => _service.softDeleteNote(id);
 

@@ -42,11 +42,11 @@ class NotesList extends ConsumerWidget {
       itemBuilder: (context, index) {
         final note = notes[index];
         final isSelected = note.id == notesState.selectedNoteId;
-        final group = _groupFor(note);
+        final groupsForNote = _groupsFor(note);
         return _NoteItem(
           key: ValueKey(note.id),
           note: note,
-          group: group,
+          groups: groupsForNote,
           isSelected: isSelected,
           onTap: () => _handleTap(context, ref, note),
           onDelete: () => _confirmDelete(context, ref, note),
@@ -87,11 +87,11 @@ class NotesList extends ConsumerWidget {
       itemBuilder: (context, index) {
         final note = notes[index];
         final isSelected = note.id == notesState.selectedNoteId;
-        final group = _groupFor(note);
+        final groupsForNote = _groupsFor(note);
         return _NoteItem(
           key: ValueKey(note.id),
           note: note,
-          group: group,
+          groups: groupsForNote,
           isSelected: isSelected,
           onTap: () => _handleTap(context, ref, note),
           onDelete: () => _confirmDelete(context, ref, note),
@@ -127,13 +127,9 @@ class NotesList extends ConsumerWidget {
     }
   }
 
-  Group? _groupFor(Note note) {
-    if (note.groupId == null) return null;
-    try {
-      return groups.firstWhere((g) => g.id == note.groupId);
-    } catch (_) {
-      return null;
-    }
+  List<Group> _groupsFor(Note note) {
+    if (note.groupIds.isEmpty) return [];
+    return groups.where((g) => note.groupIds.contains(g.id)).toList();
   }
 
   List<Note> _filteredNotes(List<Note> notes) {
@@ -241,24 +237,21 @@ class NotesList extends ConsumerWidget {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                if (note.groupId != null)
+                if (note.groupIds.isNotEmpty)
                   ListTile(
                     dense: true,
                     leading: Icon(Icons.close_rounded,
                         size: 16, color: colors.deleteColor),
-                    title: Text('Gruptan Çıkar',
+                    title: Text('Tüm Gruplardan Çıkar',
                         style:
                             TextStyle(fontSize: 13, color: colors.deleteColor)),
                     onTap: () {
-                      ref
-                          .read(groupsProvider.notifier)
-                          .removeNoteFromGroup(note.id!);
-                      ref.read(notesProvider.notifier).reload();
+                      ref.read(notesProvider.notifier).updateNote(note.id!, groupIds: const []);
                       Navigator.pop(ctx);
                     },
                   ),
                 ...groupsState.groups.map((g) {
-                  final isActive = note.groupId == g.id;
+                  final isActive = note.groupIds.contains(g.id);
                   return ListTile(
                     dense: true,
                     leading: Container(
@@ -275,10 +268,13 @@ class NotesList extends ConsumerWidget {
                             size: 16, color: colors.primary)
                         : null,
                     onTap: () {
-                      ref
-                          .read(groupsProvider.notifier)
-                          .assignNoteToGroup(note.id!, g.id!);
-                      ref.read(notesProvider.notifier).reload();
+                      final newGroups = List<int>.from(note.groupIds);
+                      if (isActive) {
+                        newGroups.remove(g.id);
+                      } else {
+                        newGroups.add(g.id!);
+                      }
+                      ref.read(notesProvider.notifier).updateNote(note.id!, groupIds: newGroups);
                       Navigator.pop(ctx);
                     },
                   );
@@ -309,7 +305,7 @@ class NotesList extends ConsumerWidget {
 // ─────────────────────────────────────────────
 class _NoteItem extends StatefulWidget {
   final Note note;
-  final Group? group;
+  final List<Group> groups;
   final bool isSelected;
   final VoidCallback onTap;
   final VoidCallback onDelete;
@@ -324,7 +320,7 @@ class _NoteItem extends StatefulWidget {
   const _NoteItem({
     super.key,
     required this.note,
-    this.group,
+    this.groups = const [],
     required this.isSelected,
     required this.onTap,
     required this.onDelete,
@@ -345,8 +341,8 @@ class _NoteItemState extends State<_NoteItem> {
   bool _hovering = false;
 
   Color? get _groupColor {
-    if (widget.group == null) return null;
-    final h = widget.group!.color.replaceFirst('#', '');
+    if (widget.groups.isEmpty) return null;
+    final h = widget.groups.first.color.replaceFirst('#', '');
     return Color(int.parse('FF$h', radix: 16));
   }
 
@@ -443,22 +439,28 @@ class _NoteItemState extends State<_NoteItem> {
                                   overflow: TextOverflow.ellipsis,
                                 ),
                               ),
-                              if (gc != null && widget.group != null)
-                                Container(
-                                  margin: const EdgeInsets.only(left: 6),
-                                  padding: const EdgeInsets.symmetric(
-                                      horizontal: 5, vertical: 1),
-                                  decoration: BoxDecoration(
-                                    color: gc.withAlpha(40),
-                                    borderRadius: BorderRadius.circular(4),
-                                  ),
-                                  child: Text(
-                                    widget.group!.name,
-                                    style: TextStyle(
-                                        fontSize: 9,
-                                        color: gc,
-                                        fontWeight: FontWeight.w500),
-                                  ),
+                              if (widget.groups.isNotEmpty)
+                                Row(
+                                  children: widget.groups.map((g) {
+                                    final gColorStr = g.color.replaceFirst('#', '');
+                                    final gColor = Color(int.parse('FF$gColorStr', radix: 16));
+                                    return Container(
+                                      margin: const EdgeInsets.only(left: 6),
+                                      padding: const EdgeInsets.symmetric(
+                                          horizontal: 5, vertical: 1),
+                                      decoration: BoxDecoration(
+                                        color: gColor.withAlpha(40),
+                                        borderRadius: BorderRadius.circular(4),
+                                      ),
+                                      child: Text(
+                                        g.name,
+                                        style: TextStyle(
+                                            fontSize: 9,
+                                            color: gColor,
+                                            fontWeight: FontWeight.w500),
+                                      ),
+                                    );
+                                  }).toList(),
                                 ),
                             ],
                           ),

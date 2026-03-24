@@ -82,14 +82,14 @@ class NotesNotifier extends StateNotifier<NotesState> {
 
   void createNote() {
     if (_repo == null) return;
-    final note = _repo!.create(groupId: _filterByGroup ? _groupFilter : null);
+    final note = _repo!.create(groupIds: _filterByGroup && _groupFilter != null ? [_groupFilter!] : []);
     reload();
     state = state.copyWith(selectedNoteId: note.id);
   }
 
-  void updateNote(int id, {String? title, String? content}) {
+  void updateNote(int id, {String? title, String? content, List<int>? groupIds}) {
     if (_repo == null) return;
-    _repo!.update(id, title: title, content: content);
+    _repo!.update(id, title: title, content: content, groupIds: groupIds);
     reload();
   }
 

@@ -63,9 +63,21 @@ class DatabaseService {
       )
     ''');
 
+    // Note groups table
+    database.execute('''
+      CREATE TABLE IF NOT EXISTS note_groups (
+        note_id INTEGER NOT NULL,
+        group_id INTEGER NOT NULL,
+        PRIMARY KEY (note_id, group_id),
+        FOREIGN KEY (note_id) REFERENCES notes(id) ON DELETE CASCADE,
+        FOREIGN KEY (group_id) REFERENCES groups(id) ON DELETE CASCADE
+      )
+    ''');
+
     // Migrations
     _migrateAddSortOrder(database);
     _migrateAddIsShortcut(database);
+    _migrateNoteGroups(database);
   }
 
   /// Safely adds the sort_order column to existing databases.
@@ -93,6 +105,17 @@ class DatabaseService {
       database.execute(
         'ALTER TABLE notes ADD COLUMN is_shortcut INTEGER NOT NULL DEFAULT 0',
       );
+    }
+  }
+
+  void _migrateNoteGroups(Database database) {
+    final rs = database.select("SELECT value FROM meta WHERE key = 'migrated_note_groups'");
+    if (rs.isEmpty) {
+      database.execute('''
+        INSERT OR IGNORE INTO note_groups (note_id, group_id)
+        SELECT id, group_id FROM notes WHERE group_id IS NOT NULL
+      ''');
+      _insertMetaIfMissing(database, 'migrated_note_groups', '1');
     }
   }
 

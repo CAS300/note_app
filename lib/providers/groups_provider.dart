@@ -86,16 +86,6 @@ class GroupsNotifier extends StateNotifier<GroupsState> {
     _repo!.delete(id);
     reload();
   }
-
-  void assignNoteToGroup(int noteId, int groupId) {
-    if (_repo == null) return;
-    _repo!.assignNote(noteId, groupId);
-  }
-
-  void removeNoteFromGroup(int noteId) {
-    if (_repo == null) return;
-    _repo!.removeNoteFromGroup(noteId);
-  }
 }
 
 final groupsProvider =

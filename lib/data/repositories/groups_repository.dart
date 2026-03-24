@@ -15,7 +15,4 @@ class GroupsRepository {
   void updateColor(int id, String newColor) =>
       _service.updateColor(id, newColor);
   void delete(int id) => _service.delete(id);
-  void assignNote(int noteId, int groupId) =>
-      _service.assignNote(noteId, groupId);
-  void removeNoteFromGroup(int noteId) => _service.removeNoteFromGroup(noteId);
 }
