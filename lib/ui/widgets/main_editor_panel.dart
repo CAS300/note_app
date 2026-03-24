@@ -370,7 +370,7 @@ class _MainEditorPanelState extends ConsumerState<MainEditorPanel> {
                 focusedBorder: InputBorder.none,
                 fillColor: Colors.transparent,
                 hintText: 'Yazmaya başlayın…',
-                contentPadding: EdgeInsets.zero,
+                contentPadding: const EdgeInsets.only(bottom: 80),
               ),
               maxLines: null,
               expands: true,
